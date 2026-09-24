@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "GAINT Academy",
+    "slug": "gaint-academy",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "android": {
+      "package": "com.gaint.academy",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.gaint.academy",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "GAINT Academy uses location only for approved student safety and transport tracking."
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from .models import User, ParentStudentLink, Record, StudentLocation
+from .models import User, Institution, ParentStudentLink, Record, StudentLocation
 from .security import hash_password
 
 DEMO_PASSWORD = "Password@123"
@@ -17,6 +17,11 @@ DEMO_USERS = [
 ]
 
 def seed(db: Session):
+    institution = db.get(Institution, 1)
+    if not institution:
+        db.add(Institution(id=1, name="GAINT Demo University", institution_type="UNIVERSITY", code="GAINT-DEMO", is_active=True))
+        db.commit()
+
     for email,name,role in DEMO_USERS:
         user = db.scalar(select(User).where(User.email == email))
         if not user:

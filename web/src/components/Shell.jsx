@@ -13,6 +13,7 @@ import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import AdaptiveRoleModule from "./AdaptiveRoleModule";
 import InstitutionSetup from "./InstitutionSetup";
 import AcademicStructure from "./AcademicStructure";
+import AcademicAssignments from "./AcademicAssignments";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -30,6 +31,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
         if (user.role === "Institution Admin") {
           if (!items.includes("Institution Setup")) items = [...items, "Institution Setup"];
           if (!items.includes("Academic Structure")) items = [...items, "Academic Structure"];
+          if (!items.includes("Enrollment & Assignments")) items = [...items, "Enrollment & Assignments"];
         }
         setMenu(items);
         setActive((current) => items.includes(current) ? current : "Dashboard");
@@ -49,6 +51,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <InstitutionSetup user={user} onUpdated={(institution) => onUserChange?.({ ...user, institution })} />;
   } else if (user.role === "Institution Admin" && active === "Academic Structure") {
     content = <AcademicStructure ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Enrollment & Assignments") {
+    content = <AcademicAssignments ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {
     content = <StudentFinance ui={ui} />;
   } else if (user.role === "Student" && ["My Profile","Timetable","Attendance","Courses","Homework","Assignments","Exams","Results","Transport","Library","Events","Grievance"].includes(active)) {

@@ -22,6 +22,8 @@ import TeacherSessions from "./TeacherSessions";
 import StudentAttendanceTimetable from "./StudentAttendanceTimetable";
 import GradeRules from "./GradeRules";
 import StudentResults from "./StudentResults";
+import TeacherResults from "./TeacherResults";
+import AcademicTranscript from "./AcademicTranscript";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -67,7 +69,9 @@ export default function Shell({ user, onLogout, onUserChange }) {
   } else if (user.role === "Student" && active === "Fees") {
     content = <StudentFinance ui={ui} />;
   } else if (user.role === "Student" && active === "Results") {
-    content = <StudentResults ui={ui} />;
+    content = <AcademicTranscript ui={ui} user={user} />;
+  } else if (user.role === "Teacher" && active === "Results") {
+    content = <TeacherResults ui={ui} />;
   } else if (user.role === "Student" && ["Timetable","Attendance"].includes(active)) {
     content = <StudentAttendanceTimetable title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["Timetable","Attendance"].includes(active)) {
@@ -78,7 +82,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AcademicWorkTeacher title={active} ui={ui} />;
   } else if (user.role === "Student" && ["Courses"].includes(active)) {
     content = <StudentAssignedAcademics title={active} ui={ui} />;
-  } else if (user.role === "Teacher" && ["My Classes","My Students","Results"].includes(active)) {
+  } else if (user.role === "Teacher" && ["My Classes","My Students"].includes(active)) {
     content = <TeacherAcademicWorkspace title={active} ui={ui} />;
   } else if (user.role === "Student" && ["My Profile","Transport","Library","Events","Grievance"].includes(active)) {
     content = <StudentAcademicModule title={active} ui={ui} />;

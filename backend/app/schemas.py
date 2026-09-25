@@ -60,3 +60,20 @@ class AcademicActivityIn(BaseModel):
     category: str = "General"
     status: str = "Active"
     notes: str = ""
+
+
+class AcademicWorkIn(BaseModel):
+    unit_id: int
+    work_type: str
+    title: str = Field(min_length=2, max_length=180)
+    description: str = ""
+    max_marks: float = Field(default=0, ge=0)
+    due_at: Optional[str] = None
+
+class SubmissionIn(BaseModel):
+    submission_text: str = Field(min_length=1)
+
+class GradeIn(BaseModel):
+    marks: float = Field(ge=0)
+    grade: str = ""
+    feedback: str = ""

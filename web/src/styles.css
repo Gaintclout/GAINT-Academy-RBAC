@@ -1668,3 +1668,98 @@ th {
   }
 }
 
+
+
+/* =========================================================
+   MULTI-INSTITUTION STUDENT EXPERIENCE
+   ========================================================= */
+
+.student-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  border-radius: 20px;
+  margin-bottom: 16px;
+  border: 1px solid #dfe8f2;
+  background: linear-gradient(135deg, #ffffff, #eef6ff);
+}
+.student-hero h1 { margin: 5px 0 4px; font-size: 30px; }
+.student-hero p { margin: 0; color: #64748b; }
+.eyebrow { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: #3e63dd; }
+.hero-badge { min-width: 90px; text-align: center; padding: 12px 16px; border-radius: 999px; background: #eef3ff; color: #3154c8; font-weight: 900; }
+
+.student-kpis, .finance-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.student-kpi, .finance-kpis article {
+  background: #fff;
+  border: 1px solid #dfe8f2;
+  border-radius: 16px;
+  padding: 18px;
+}
+.student-kpi small, .finance-kpis small { color: #64748b; display: block; }
+.student-kpi strong, .finance-kpis strong { display: block; font-size: 24px; margin: 5px 0; }
+.student-kpi span { font-size: 12px; color: #71869b; }
+
+.student-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1.6fr) minmax(280px,.9fr);
+  gap: 16px;
+}
+.timeline-list { margin-top: 12px; }
+.timeline-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 130px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf2f7;
+}
+.timeline-row > span { color: #3e63dd; font-weight: 800; }
+.timeline-row small { color: #71869b; text-align: right; }
+.quick-tile-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-top: 14px; }
+.quick-tile-grid button {
+  border: 1px solid #dfe8f2;
+  background: #f8fbff;
+  color: #223b53;
+  border-radius: 12px;
+  padding: 14px;
+  font-weight: 800;
+  display: flex;
+  justify-content: space-between;
+}
+
+.institution-school .student-hero { background: linear-gradient(135deg,#fff7e8,#eaf8ff); }
+.institution-school .student-kpi:nth-child(1) { background:#fff6e9; }
+.institution-school .student-kpi:nth-child(2) { background:#f4efff; }
+.institution-school .student-kpi:nth-child(3) { background:#eafaf3; }
+.institution-school .student-kpi:nth-child(4) { background:#eef7ff; }
+
+.institution-college .student-hero { background: linear-gradient(135deg,#fff3ec,#eef4ff); }
+.institution-university .student-hero { background: linear-gradient(135deg,#eef8ff,#f3efff); }
+
+.finance-kpis { grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); }
+.finance-kpis article:nth-child(2) { background:#effbf4; }
+.finance-kpis article:nth-child(3) { background:#fff1f1; }
+.finance-kpis article:nth-child(4) { background:#fff9e8; }
+.finance-panel { margin-top: 16px; }
+.fee-status { display:inline-flex; padding:4px 9px; border-radius:999px; font-size:12px; font-weight:800; }
+.fee-status.paid { background:#e8f7ef; color:#176b4d; }
+.fee-status.due { background:#feeceb; color:#b42318; }
+
+@media (max-width: 1050px) {
+  .student-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .student-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .student-hero { align-items:flex-start; flex-direction:column; }
+  .student-kpis { grid-template-columns: 1fr; }
+  .timeline-row { grid-template-columns: 75px 1fr; }
+  .timeline-row small { grid-column: 2; text-align:left; }
+  .quick-tile-grid { grid-template-columns: 1fr; }
+}

@@ -19,7 +19,8 @@ export const INSTITUTION_UI = {
       Library: "Library",
       Events: "Activities",
       Grievance: "Grievance",
-      "My Safety": "My Safety"
+      "My Safety": "My Safety",
+      Staff: "Teachers & Staff", Admissions: "Admissions", Academics: "Classes & Subjects", "Exams & Results": "Exams & Report Cards", Communication: "School Communication", "Learning / LMS": "Learning Resources", "Fees & Payments": "School Fees", Hostel: "Boarding / Hostel", "Inventory & Assets": "School Assets", Health: "Student Health", "Users & Roles": "Users & Roles", "My Classes": "My Classes", "My Students": "My Students", "Teacher Notes": "Teacher Notes", Leave: "Leave", "My Children": "My Children", "Live Location": "School Bus / Live Location", Messages: "Messages", "Leave Request": "Leave Request", Payments: "Payments", Receipts: "Receipts", Concessions: "Concessions", Refunds: "Refunds", Reconciliation: "Reconciliation", "Finance Reports": "Finance Reports", Documents: "Staff Documents", Recruitment: "Recruitment", Performance: "Staff Performance", "HR Reports": "HR Reports", "Campus Attendance": "School Attendance", "Live Safety Map": "School Safety Map", Visitors: "Visitors", Inventory: "Inventory", Assets: "Assets", Reports: "Reports", "Audit Trail": "Audit Trail", Compliance: "Compliance", "Exception Reports": "Exception Reports", Evidence: "Evidence", "Export Reports": "Export Reports"
     },
     dashboard: {
       greeting: "Good Morning",
@@ -52,7 +53,8 @@ export const INSTITUTION_UI = {
       Library: "Library",
       Events: "Clubs & Societies",
       Grievance: "Student Support",
-      "My Safety": "Safety & Emergency"
+      "My Safety": "Safety & Emergency",
+      Staff: "Faculty & Staff", Admissions: "Admissions", Academics: "Departments & Programs", "Exams & Results": "Examinations & Results", Communication: "Campus Communication", "Learning / LMS": "Digital Learning", "Fees & Payments": "Semester Fees & Payments", Hostel: "Hostel", "Inventory & Assets": "Campus Assets", Health: "Student Wellness", "Users & Roles": "Users & Roles", "My Classes": "My Courses", "My Students": "Advisees / Students", "Teacher Notes": "Faculty Notes", Leave: "Leave", "My Children": "Student Overview", "Live Location": "Campus Transport", Messages: "Messages", "Leave Request": "Leave Request", Payments: "Payments", Receipts: "Receipts", Concessions: "Scholarships / Concessions", Refunds: "Refunds", Reconciliation: "Reconciliation", "Finance Reports": "Finance Reports", Documents: "Faculty & Staff Documents", Recruitment: "Recruitment", Performance: "Performance", "HR Reports": "HR Reports", "Campus Attendance": "Campus Attendance", "Live Safety Map": "Campus Safety Map", Visitors: "Visitors", Inventory: "Inventory", Assets: "Campus Assets", Reports: "Reports", "Audit Trail": "Audit Trail", Compliance: "Compliance", "Exception Reports": "Exception Reports", Evidence: "Evidence", "Export Reports": "Export Reports"
     },
     dashboard: {
       greeting: "Welcome back",
@@ -85,7 +87,8 @@ export const INSTITUTION_UI = {
       Library: "Library",
       Events: "Research & Events",
       Grievance: "Student Support",
-      "My Safety": "Campus Safety"
+      "My Safety": "Campus Safety",
+      Staff: "Faculty & Staff", Admissions: "Admissions & Enrollment", Academics: "Schools, Programs & Curriculum", "Exams & Results": "Assessment & Academic Records", Communication: "University Communication", "Learning / LMS": "Digital Learning", "Fees & Payments": "Student Finance", Hostel: "Residence / Hostel", "Inventory & Assets": "University Assets", Health: "Health & Wellness", "Users & Roles": "Identity & Roles", "My Classes": "My Courses", "My Students": "Advisees", "Teacher Notes": "Faculty Notes", Leave: "Leave", "My Children": "Student Overview", "Live Location": "Campus Services / Location", Messages: "Messages", "Leave Request": "Leave Request", Payments: "Student Payments", Receipts: "Receipts & Statements", Concessions: "Scholarships & Financial Aid", Refunds: "Refunds", Reconciliation: "Finance Reconciliation", "Finance Reports": "Financial Analytics", Documents: "Faculty & Staff Records", Recruitment: "Talent Acquisition", Performance: "Faculty & Staff Performance", "HR Reports": "Workforce Analytics", "Campus Attendance": "Campus Presence", "Live Safety Map": "Campus Safety Operations", Visitors: "Visitors", Inventory: "Inventory", Assets: "Facilities & Assets", Reports: "Institutional Reports", "Audit Trail": "Audit Trail", Compliance: "Governance & Compliance", "Exception Reports": "Risk & Exceptions", Evidence: "Audit Evidence", "Export Reports": "Audit Reports"
     },
     dashboard: {
       greeting: "Welcome back",

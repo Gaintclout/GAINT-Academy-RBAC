@@ -1799,3 +1799,12 @@ th {
 .role-college .role-hero{background:linear-gradient(135deg,#fff3ec,#eef4ff)}
 .role-university .role-hero{background:linear-gradient(135deg,#edf6ff,#f4f0ff)}
 @media(max-width:720px){.role-hero{flex-direction:column;align-items:flex-start}}
+
+.module-context{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;padding:20px 22px;margin-bottom:14px;border:1px solid #dfe8f2;border-radius:18px;background:linear-gradient(135deg,#fff,#f7f9fc)}
+.module-context h1{font-size:25px;margin:4px 0}.module-context p{margin:0;color:#64748b;max-width:720px}
+.context-chips{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.context-chips span{padding:7px 10px;border-radius:999px;background:#eef3ff;color:#3154c8;font-size:12px;font-weight:800}
+.arm-school .module-context{background:linear-gradient(135deg,#fff8eb,#f0fbff)}
+.arm-college .module-context{background:linear-gradient(135deg,#fff4ee,#f0f4ff)}
+.arm-university .module-context{background:linear-gradient(135deg,#eef7ff,#f6f2ff)}
+.adaptive-role-module>.page-title{display:none}
+@media(max-width:760px){.module-context{flex-direction:column}.context-chips{justify-content:flex-start}}

@@ -17,7 +17,7 @@ export default function Shell({ user, onLogout }) {
   const [menu, setMenu] = useState(["Dashboard"]);
   const [active, setActive] = useState("Dashboard");
   const [menuError, setMenuError] = useState("");
-  const ui = getInstitutionUI();
+  const ui = getInstitutionUI(user);
 
   useEffect(() => {
     let cancelled = false;

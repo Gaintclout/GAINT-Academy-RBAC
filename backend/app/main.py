@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -311,6 +311,64 @@ def grade_work(work_id:int,student_id:int,payload:GradeIn,user:User=Depends(requ
     sub.marks=payload.marks; sub.grade=payload.grade.strip(); sub.feedback=payload.feedback; sub.status="GRADED"
     audit(db,user,"GRADE",w.work_type,f"{w.title}:student={student_id}"); db.commit()
     return {"ok":True,"marks":sub.marks,"grade":sub.grade,"status":sub.status}
+
+@app.get("/api/v1/class-sessions")
+def class_sessions(user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):
+    unit_ids=_assigned_unit_ids(db,user)
+    if not unit_ids: return []
+    st=select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(unit_ids))
+    if user.role=="Teacher": st=st.where(ClassSession.teacher_user_id==user.id)
+    rows=db.scalars(st.order_by(ClassSession.starts_at.desc())).all()
+    return [{"id":x.id,"unit_id":x.unit_id,"title":x.title,"starts_at":x.starts_at,"ends_at":x.ends_at,"room":x.room,"status":x.status} for x in rows]
+
+@app.post("/api/v1/class-sessions")
+def create_class_session(payload:ClassSessionIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    if payload.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(403,"This course or section is not assigned to you")
+    start=_parse_due_at(payload.starts_at); end=_parse_due_at(payload.ends_at)
+    if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
+    row=ClassSession(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,title=payload.title,starts_at=start,ends_at=end,room=payload.room)
+    db.add(row); audit(db,user,"CREATE","class_session",payload.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"title":row.title,"status":row.status}
+
+@app.get("/api/v1/class-sessions/{session_id}/attendance")
+def session_attendance(session_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    session=db.get(ClassSession,session_id)
+    if not session or session.tenant_id!=user.tenant_id or session.teacher_user_id!=user.id: raise HTTPException(404,"Class session not found")
+    students=_students_for_unit(db,user.tenant_id,session.unit_id)
+    result=[]
+    for sid in students:
+        student=db.get(User,sid)
+        entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.session_id==session_id,AttendanceEntry.student_user_id==sid))
+        result.append({"student_user_id":sid,"student_name":student.name if student else "Student","status":entry.status if entry else "UNMARKED","note":entry.note if entry else ""})
+    return result
+
+@app.put("/api/v1/class-sessions/{session_id}/attendance")
+def mark_attendance(session_id:int,payload:AttendanceMarkIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    session=db.get(ClassSession,session_id)
+    if not session or session.tenant_id!=user.tenant_id or session.teacher_user_id!=user.id: raise HTTPException(404,"Class session not found")
+    if payload.student_user_id not in _students_for_unit(db,user.tenant_id,session.unit_id): raise HTTPException(400,"Student is not enrolled in this class")
+    status=payload.status.strip().upper()
+    if status not in {"PRESENT","ABSENT","LATE","EXCUSED"}: raise HTTPException(400,"Invalid attendance status")
+    entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.session_id==session_id,AttendanceEntry.student_user_id==payload.student_user_id))
+    if not entry:
+        entry=AttendanceEntry(tenant_id=user.tenant_id,session_id=session_id,student_user_id=payload.student_user_id,marked_by=user.id)
+        db.add(entry)
+    entry.status=status; entry.note=payload.note; entry.marked_by=user.id; entry.marked_at=dt.datetime.utcnow()
+    audit(db,user,"ATTENDANCE",f"session:{session_id}",f"student={payload.student_user_id}:{status}"); db.commit()
+    return {"ok":True,"status":status}
+
+@app.get("/api/v1/my-attendance")
+def my_attendance(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(_assigned_unit_ids(db,user))).order_by(ClassSession.starts_at.desc())).all()
+    rows=[]; attended=0; counted=0
+    for session in sessions:
+        entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==user.id))
+        status=entry.status if entry else "UNMARKED"
+        if status!="UNMARKED":
+            counted+=1
+            if status in {"PRESENT","LATE","EXCUSED"}: attended+=1
+        rows.append({"session_id":session.id,"title":session.title,"starts_at":session.starts_at,"room":session.room,"status":status})
+    return {"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"marked_sessions":counted,"sessions":rows}
 
 @app.get("/api/v1/records")
 def records(

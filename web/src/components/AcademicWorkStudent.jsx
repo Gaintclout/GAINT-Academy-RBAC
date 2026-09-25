@@ -1,0 +1,9 @@
+import React,{useEffect,useState} from "react"; import {api} from "../api";
+const KIND={Homework:"HOMEWORK",Assignments:"ASSIGNMENT",Exams:"EXAM"};
+export default function AcademicWorkStudent({title,ui}){
+ const kind=KIND[title],[rows,setRows]=useState([]),[text,setText]=useState({}),[err,setErr]=useState("");
+ const load=()=>api.get("/api/v1/academic-work",{params:{work_type:kind}}).then(r=>{setRows(r.data);setErr("")}).catch(e=>setErr(e?.response?.data?.detail||"Unable to load academic work."));
+ useEffect(()=>{load()},[kind]);
+ async function submit(id){try{await api.post("/api/v1/academic-work/"+id+"/submit",{submission_text:text[id]||""});load()}catch(e){setErr(e?.response?.data?.detail||"Unable to submit.")}}
+ return <div><div className="page-title"><div><span className="eyebrow">{ui.label} Student</span><h1>{title}</h1><p>Published work from your enrolled courses and sections.</p></div></div>{err&&<div className="error">{err}</div>}<div className="work-grid">{rows.length?rows.map(x=><section className="panel" key={x.id}><div className="panel-title"><b>{x.title}</b><span>{x.status}</span></div><p>{x.description||"No description"}</p><div className="work-meta"><span>Max Marks: {x.max_marks}</span><span>Due: {x.due_at?new Date(x.due_at).toLocaleString():"—"}</span></div>{x.submission?.status==="GRADED"?<div className="grade-box"><b>{x.submission.marks}/{x.max_marks}</b><span>Grade {x.submission.grade||"—"}</span><small>{x.submission.feedback||"No feedback"}</small></div>:<><textarea value={text[x.id]||""} onChange={e=>setText(v=>({...v,[x.id]:e.target.value}))} placeholder="Enter your submission"/><button className="primary" disabled={!(text[x.id]||"").trim()} onClick={()=>submit(x.id)}>{x.submission?"Resubmit":"Submit"}</button></>}</section>):<section className="panel">No published {title.toLowerCase()}.</section>}</div></div>
+}

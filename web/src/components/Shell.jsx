@@ -20,6 +20,8 @@ import AcademicWorkTeacher from "./AcademicWorkTeacher";
 import AcademicWorkStudent from "./AcademicWorkStudent";
 import TeacherSessions from "./TeacherSessions";
 import StudentAttendanceTimetable from "./StudentAttendanceTimetable";
+import GradeRules from "./GradeRules";
+import StudentResults from "./StudentResults";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -38,6 +40,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
           if (!items.includes("Institution Setup")) items = [...items, "Institution Setup"];
           if (!items.includes("Academic Structure")) items = [...items, "Academic Structure"];
           if (!items.includes("Enrollment & Assignments")) items = [...items, "Enrollment & Assignments"];
+          if (!items.includes("Grading Scheme")) items = [...items, "Grading Scheme"];
         }
         setMenu(items);
         setActive((current) => items.includes(current) ? current : "Dashboard");
@@ -59,8 +62,12 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AcademicStructure ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Enrollment & Assignments") {
     content = <AcademicAssignments ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Grading Scheme") {
+    content = <GradeRules ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {
     content = <StudentFinance ui={ui} />;
+  } else if (user.role === "Student" && active === "Results") {
+    content = <StudentResults ui={ui} />;
   } else if (user.role === "Student" && ["Timetable","Attendance"].includes(active)) {
     content = <StudentAttendanceTimetable title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["Timetable","Attendance"].includes(active)) {
@@ -69,7 +76,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AcademicWorkStudent title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["Homework","Assignments","Exams"].includes(active)) {
     content = <AcademicWorkTeacher title={active} ui={ui} />;
-  } else if (user.role === "Student" && ["Courses","Results"].includes(active)) {
+  } else if (user.role === "Student" && ["Courses"].includes(active)) {
     content = <StudentAssignedAcademics title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["My Classes","My Students","Results"].includes(active)) {
     content = <TeacherAcademicWorkspace title={active} ui={ui} />;

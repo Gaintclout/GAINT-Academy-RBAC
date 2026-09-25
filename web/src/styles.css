@@ -1763,3 +1763,32 @@ th {
   .timeline-row small { grid-column: 2; text-align:left; }
   .quick-tile-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Adaptive student module cards */
+.module-kpis {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin-bottom:16px;
+}
+.module-kpis article {
+  background:#fff;
+  border:1px solid #dfe8f2;
+  border-radius:16px;
+  padding:18px;
+  min-height:92px;
+}
+.module-kpis small { display:block; color:#64748b; margin-bottom:7px; }
+.module-kpis strong { font-size:21px; color:#102a43; }
+.student-module-school .module-kpis article:nth-child(1) { background:#fff6e9; }
+.student-module-school .module-kpis article:nth-child(2) { background:#f4efff; }
+.student-module-school .module-kpis article:nth-child(3) { background:#eafaf3; }
+.student-module-school .module-kpis article:nth-child(4) { background:#eef7ff; }
+.student-module-college .module-kpis article:nth-child(1) { border-top:3px solid #ef8354; }
+.student-module-college .module-kpis article:nth-child(2) { border-top:3px solid #4f7cac; }
+.student-module-college .module-kpis article:nth-child(3) { border-top:3px solid #5b8c85; }
+.student-module-college .module-kpis article:nth-child(4) { border-top:3px solid #7c5cbf; }
+.student-module-university .module-kpis article { background:linear-gradient(180deg,#fff,#f7f9fd); }
+@media(max-width:1000px){.module-kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:600px){.module-kpis{grid-template-columns:1fr;}}

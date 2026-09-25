@@ -108,3 +108,32 @@ class AcademicAssignment(Base):
     assignment_type: Mapped[str] = mapped_column(String(30), index=True)
     status: Mapped[str] = mapped_column(String(30), default="Active")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AcademicWork(Base):
+    __tablename__ = "academic_work"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("academic_units.id"), index=True)
+    teacher_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    work_type: Mapped[str] = mapped_column(String(30), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    max_marks: Mapped[float] = mapped_column(Float, default=0)
+    due_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="PUBLISHED")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+class StudentAcademicWork(Base):
+    __tablename__ = "student_academic_work"
+    __table_args__ = (UniqueConstraint("work_id","student_user_id", name="uq_student_academic_work"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    work_id: Mapped[int] = mapped_column(ForeignKey("academic_work.id"), index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    submission_text: Mapped[str] = mapped_column(Text, default="")
+    submitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    marks: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grade: Mapped[str] = mapped_column(String(20), default="")
+    feedback: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")

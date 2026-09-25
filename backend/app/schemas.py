@@ -28,3 +28,79 @@ class SosIn(BaseModel):
 
 class AIChatRequest(BaseModel):
     message: str
+
+
+class InstitutionIn(BaseModel):
+    name: str = Field(min_length=2, max_length=180)
+    institution_type: str
+    code: str = Field(min_length=2, max_length=50)
+
+
+class AcademicUnitIn(BaseModel):
+    unit_type: str
+    name: str = Field(min_length=2, max_length=180)
+    code: str = Field(min_length=1, max_length=60)
+    parent_id: Optional[int] = None
+    campus_id: int = 1
+    status: str = "Active"
+
+
+class AcademicAssignmentIn(BaseModel):
+    user_id: int
+    unit_id: int
+    assignment_type: str
+    status: str = "Active"
+
+
+class AcademicActivityIn(BaseModel):
+    module: str
+    unit_id: int
+    name: str = Field(min_length=2, max_length=180)
+    code: str = ""
+    category: str = "General"
+    status: str = "Active"
+    notes: str = ""
+
+
+class AcademicWorkIn(BaseModel):
+    unit_id: int
+    work_type: str
+    title: str = Field(min_length=2, max_length=180)
+    description: str = ""
+    max_marks: float = Field(default=0, ge=0)
+    due_at: Optional[str] = None
+
+class SubmissionIn(BaseModel):
+    submission_text: str = Field(min_length=1)
+
+class GradeIn(BaseModel):
+    marks: float = Field(ge=0)
+    grade: str = ""
+    feedback: str = ""
+
+
+class ClassSessionIn(BaseModel):
+    unit_id: int
+    title: str = Field(min_length=2, max_length=180)
+    starts_at: str
+    ends_at: str
+    room: str = ""
+
+class AttendanceMarkIn(BaseModel):
+    student_user_id: int
+    status: str
+    note: str = ""
+
+
+class GradeRuleIn(BaseModel):
+    name: str
+    min_percentage: float = Field(ge=0, le=100)
+    max_percentage: float = Field(ge=0, le=100)
+    grade: str
+    grade_point: Optional[float] = None
+    result_status: str = "PASS"
+
+class ExamResultIn(BaseModel):
+    student_user_id: int
+    marks: float = Field(ge=0)
+    remarks: str = ""

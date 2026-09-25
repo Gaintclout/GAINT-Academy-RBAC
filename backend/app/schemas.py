@@ -90,3 +90,17 @@ class AttendanceMarkIn(BaseModel):
     student_user_id: int
     status: str
     note: str = ""
+
+
+class GradeRuleIn(BaseModel):
+    name: str
+    min_percentage: float = Field(ge=0, le=100)
+    max_percentage: float = Field(ge=0, le=100)
+    grade: str
+    grade_point: Optional[float] = None
+    result_status: str = "PASS"
+
+class ExamResultIn(BaseModel):
+    student_user_id: int
+    marks: float = Field(ge=0)
+    remarks: str = ""

@@ -77,3 +77,16 @@ class GradeIn(BaseModel):
     marks: float = Field(ge=0)
     grade: str = ""
     feedback: str = ""
+
+
+class ClassSessionIn(BaseModel):
+    unit_id: int
+    title: str = Field(min_length=2, max_length=180)
+    starts_at: str
+    ends_at: str
+    room: str = ""
+
+class AttendanceMarkIn(BaseModel):
+    student_user_id: int
+    status: str
+    note: str = ""

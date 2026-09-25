@@ -6,6 +6,15 @@ from .database import Base
 def utcnow():
     return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
+class Institution(Base):
+    __tablename__ = "institutions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(180))
+    institution_type: Mapped[str] = mapped_column(String(30), default="UNIVERSITY", index=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)

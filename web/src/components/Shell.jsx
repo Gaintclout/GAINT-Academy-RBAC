@@ -8,6 +8,7 @@ import Audit from "./Audit";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
+import StudentAcademicModule from "./StudentAcademicModule";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout }) {
@@ -38,6 +39,8 @@ export default function Shell({ user, onLogout }) {
     content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : <Dashboard user={user} />;
   } else if (user.role === "Student" && active === "Fees") {
     content = <StudentFinance ui={ui} />;
+  } else if (user.role === "Student" && ["My Profile","Timetable","Attendance","Courses","Homework","Assignments","Exams","Results","Transport","Library","Events","Grievance"].includes(active)) {
+    content = <StudentAcademicModule title={active} ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Live Location") {
     content = <ParentTracking />;
   } else if (user.role === "Campus Admin" && active === "Live Safety Map") {

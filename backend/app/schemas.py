@@ -34,3 +34,12 @@ class InstitutionIn(BaseModel):
     name: str = Field(min_length=2, max_length=180)
     institution_type: str
     code: str = Field(min_length=2, max_length=50)
+
+
+class AcademicUnitIn(BaseModel):
+    unit_type: str
+    name: str = Field(min_length=2, max_length=180)
+    code: str = Field(min_length=1, max_length=60)
+    parent_id: Optional[int] = None
+    campus_id: int = 1
+    status: str = "Active"

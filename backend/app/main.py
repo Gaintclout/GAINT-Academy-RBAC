@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn
+from .models import User, Institution, AcademicUnit, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -110,6 +110,34 @@ def update_institution(payload: InstitutionIn, user: User = Depends(require_role
     audit(db, user, "UPDATE", "institution", institution_type)
     db.commit(); db.refresh(row)
     return institution_payload(db, user.tenant_id)
+
+@app.get("/api/v1/academic-structure")
+def academic_structure(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id == user.tenant_id).order_by(AcademicUnit.unit_type, AcademicUnit.name)).all()
+    return [{"id":r.id,"unit_type":r.unit_type,"name":r.name,"code":r.code,"parent_id":r.parent_id,"campus_id":r.campus_id,"status":r.status} for r in rows]
+
+@app.post("/api/v1/academic-structure")
+def create_academic_unit(payload: AcademicUnitIn, user: User = Depends(require_roles("Institution Admin")), db: Session = Depends(get_db)):
+    allowed={"CAMPUS","SCHOOL_FACULTY","DEPARTMENT","PROGRAM","ACADEMIC_PERIOD","COURSE","SECTION_BATCH"}
+    unit_type=payload.unit_type.strip().upper()
+    if unit_type not in allowed:
+        raise HTTPException(400,"Unsupported academic unit type")
+    if payload.parent_id is not None:
+        parent=db.get(AcademicUnit,payload.parent_id)
+        if not parent or parent.tenant_id != user.tenant_id:
+            raise HTTPException(400,"Invalid parent academic unit")
+    row=AcademicUnit(tenant_id=user.tenant_id,campus_id=payload.campus_id,unit_type=unit_type,name=payload.name.strip(),code=payload.code.strip().upper(),parent_id=payload.parent_id,status=payload.status)
+    db.add(row); audit(db,user,"CREATE","academic_structure",f"{unit_type}:{row.name}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"unit_type":row.unit_type,"name":row.name,"code":row.code,"parent_id":row.parent_id,"campus_id":row.campus_id,"status":row.status}
+
+@app.delete("/api/v1/academic-structure/{unit_id}")
+def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(AcademicUnit,unit_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Academic unit not found")
+    child=db.scalar(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.parent_id==unit_id))
+    if child: raise HTTPException(409,"Remove child units before deleting this item")
+    audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
+    return {"ok":True}
 
 @app.get("/api/v1/navigation")
 def navigation(user: User = Depends(current_user)):

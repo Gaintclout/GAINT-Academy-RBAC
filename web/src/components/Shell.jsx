@@ -9,6 +9,7 @@ import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
 import StudentAcademicModule from "./StudentAcademicModule";
+import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout }) {
@@ -36,7 +37,7 @@ export default function Shell({ user, onLogout }) {
 
   let content;
   if (active === "Dashboard") {
-    content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : <Dashboard user={user} />;
+    content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {
     content = <StudentFinance ui={ui} />;
   } else if (user.role === "Student" && ["My Profile","Timetable","Attendance","Courses","Homework","Assignments","Exams","Results","Transport","Library","Events","Grievance"].includes(active)) {

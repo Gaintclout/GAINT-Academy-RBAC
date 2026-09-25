@@ -1808,3 +1808,10 @@ th {
 .arm-university .module-context{background:linear-gradient(135deg,#eef7ff,#f6f2ff)}
 .adaptive-role-module>.page-title{display:none}
 @media(max-width:760px){.module-context{flex-direction:column}.context-chips{justify-content:flex-start}}
+
+.setup-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:16px}
+.setup-form{display:grid;gap:14px;margin:18px 0}.setup-form label{display:grid;gap:7px;color:#425b72;font-size:13px;font-weight:800}
+.setup-form input,.setup-form select{width:100%;padding:12px;border:1px solid #d6e0ea;border-radius:10px;background:#fff;color:#102a43;font:inherit}
+.setup-summary{display:grid;gap:10px;margin:16px 0}.setup-summary>div{padding:13px;border:1px solid #e3eaf2;border-radius:12px;background:#f8fbff}
+.setup-summary small{display:block;color:#71869b;margin-bottom:5px}.setup-summary strong{color:#102a43}
+@media(max-width:900px){.setup-grid{grid-template-columns:1fr}}

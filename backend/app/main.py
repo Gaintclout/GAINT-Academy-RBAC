@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest
+from .models import User, Institution, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -60,6 +60,12 @@ def demo_accounts():
         "accounts":[{"email":e,"name":n,"role":r} for e,n,r in DEMO_USERS],
     }
 
+def institution_payload(db: Session, tenant_id: int):
+    row = db.get(Institution, tenant_id)
+    if not row:
+        return {"id": tenant_id, "name": "GAINT Academy", "institution_type": "UNIVERSITY", "code": ""}
+    return {"id": row.id, "name": row.name, "institution_type": row.institution_type, "code": row.code}
+
 @app.post("/api/v1/auth/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
@@ -72,15 +78,38 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         "user":{
             "id":user.id,"name":user.name,"email":user.email,"role":user.role,
             "tenant_id":user.tenant_id,"campus_id":user.campus_id,
+            "institution": institution_payload(db, user.tenant_id),
         }
     }
 
 @app.get("/api/v1/auth/me")
-def me(user: User = Depends(current_user)):
+def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {
         "id":user.id,"name":user.name,"email":user.email,"role":user.role,
         "tenant_id":user.tenant_id,"campus_id":user.campus_id,
+        "institution": institution_payload(db, user.tenant_id),
     }
+
+@app.get("/api/v1/institution")
+def institution_profile(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return institution_payload(db, user.tenant_id)
+
+@app.put("/api/v1/institution")
+def update_institution(payload: InstitutionIn, user: User = Depends(require_roles("Institution Admin")), db: Session = Depends(get_db)):
+    institution_type = payload.institution_type.strip().upper()
+    if institution_type not in {"SCHOOL","COLLEGE","UNIVERSITY","TRAINING_INSTITUTE"}:
+        raise HTTPException(400, "Unsupported institution type")
+    row = db.get(Institution, user.tenant_id)
+    if not row:
+        row = Institution(id=user.tenant_id, name=payload.name.strip(), institution_type=institution_type, code=payload.code.strip().upper())
+        db.add(row)
+    else:
+        row.name = payload.name.strip()
+        row.institution_type = institution_type
+        row.code = payload.code.strip().upper()
+    audit(db, user, "UPDATE", "institution", institution_type)
+    db.commit(); db.refresh(row)
+    return institution_payload(db, user.tenant_id)
 
 @app.get("/api/v1/navigation")
 def navigation(user: User = Depends(current_user)):

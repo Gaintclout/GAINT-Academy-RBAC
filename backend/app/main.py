@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -369,6 +369,67 @@ def my_attendance(user:User=Depends(require_roles("Student")),db:Session=Depends
             if status in {"PRESENT","LATE","EXCUSED"}: attended+=1
         rows.append({"session_id":session.id,"title":session.title,"starts_at":session.starts_at,"room":session.room,"status":status})
     return {"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"marked_sessions":counted,"sessions":rows}
+
+@app.get("/api/v1/grade-rules")
+def grade_rules(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    rows=db.scalars(select(GradeRule).where(GradeRule.tenant_id==user.tenant_id).order_by(GradeRule.min_percentage.desc())).all()
+    return [{"id":r.id,"name":r.name,"min_percentage":r.min_percentage,"max_percentage":r.max_percentage,"grade":r.grade,"grade_point":r.grade_point,"result_status":r.result_status} for r in rows]
+
+@app.post("/api/v1/grade-rules")
+def create_grade_rule(payload:GradeRuleIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    if payload.max_percentage<payload.min_percentage: raise HTTPException(400,"Maximum percentage must be greater than or equal to minimum percentage")
+    overlap=db.scalar(select(GradeRule).where(GradeRule.tenant_id==user.tenant_id,GradeRule.min_percentage<=payload.max_percentage,GradeRule.max_percentage>=payload.min_percentage))
+    if overlap: raise HTTPException(409,"Grade percentage range overlaps an existing rule")
+    r=GradeRule(tenant_id=user.tenant_id,**payload.model_dump())
+    db.add(r); audit(db,user,"CREATE","grade_rule",f"{r.grade}:{r.min_percentage}-{r.max_percentage}"); db.commit(); db.refresh(r)
+    return {"id":r.id,"grade":r.grade}
+
+@app.delete("/api/v1/grade-rules/{rule_id}")
+def delete_grade_rule(rule_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    r=db.get(GradeRule,rule_id)
+    if not r or r.tenant_id!=user.tenant_id: raise HTTPException(404,"Grade rule not found")
+    db.delete(r); audit(db,user,"DELETE","grade_rule",r.grade); db.commit(); return {"ok":True}
+
+def _grade_for(db:Session,tenant_id:int,percentage:float):
+    return db.scalar(select(GradeRule).where(GradeRule.tenant_id==tenant_id,GradeRule.min_percentage<=percentage,GradeRule.max_percentage>=percentage).order_by(GradeRule.min_percentage.desc()))
+
+@app.put("/api/v1/exams/{work_id}/results")
+def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    exam=db.get(AcademicWork,work_id)
+    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    if payload.student_user_id not in _students_for_unit(db,user.tenant_id,exam.unit_id): raise HTTPException(400,"Student is not enrolled in this exam course")
+    if exam.max_marks<=0: raise HTTPException(400,"Exam maximum marks must be greater than zero")
+    if payload.marks>exam.max_marks: raise HTTPException(400,"Marks cannot exceed maximum marks")
+    percentage=round(payload.marks*100/exam.max_marks,2); rule=_grade_for(db,user.tenant_id,percentage)
+    if not rule: raise HTTPException(409,"No grading rule covers this percentage")
+    row=db.scalar(select(ExamResult).where(ExamResult.work_id==work_id,ExamResult.student_user_id==payload.student_user_id))
+    if not row:
+        row=ExamResult(tenant_id=user.tenant_id,work_id=work_id,student_user_id=payload.student_user_id,marks=payload.marks,percentage=percentage,grade=rule.grade,grade_point=rule.grade_point,result_status=rule.result_status,remarks=payload.remarks)
+        db.add(row)
+    else:
+        row.marks=payload.marks; row.percentage=percentage; row.grade=rule.grade; row.grade_point=rule.grade_point; row.result_status=rule.result_status; row.remarks=payload.remarks
+    audit(db,user,"GRADE","exam_result",f"exam={work_id}:student={payload.student_user_id}:{rule.grade}"); db.commit()
+    return {"ok":True,"percentage":percentage,"grade":rule.grade,"grade_point":rule.grade_point,"result_status":rule.result_status}
+
+@app.post("/api/v1/exams/{work_id}/publish")
+def publish_exam_results(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    exam=db.get(AcademicWork,work_id)
+    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    rows=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()
+    if not rows: raise HTTPException(409,"No exam results have been entered")
+    for r in rows: r.published=True
+    audit(db,user,"PUBLISH","exam_results",f"exam={work_id}:count={len(rows)}"); db.commit(); return {"ok":True,"published":len(rows)}
+
+@app.get("/api/v1/my-results")
+def my_results(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.student_user_id==user.id,ExamResult.published==True).order_by(ExamResult.id.desc())).all()
+    result=[]; points=[]
+    for r in rows:
+        exam=db.get(AcademicWork,r.work_id); unit=db.get(AcademicUnit,exam.unit_id) if exam else None
+        if exam and unit:
+            result.append({"exam_id":exam.id,"exam":exam.title,"course":unit.name,"marks":r.marks,"max_marks":exam.max_marks,"percentage":r.percentage,"grade":r.grade,"grade_point":r.grade_point,"result_status":r.result_status,"remarks":r.remarks})
+            if r.grade_point is not None: points.append(r.grade_point)
+    return {"results":result,"gpa":round(sum(points)/len(points),2) if points else None}
 
 @app.get("/api/v1/records")
 def records(

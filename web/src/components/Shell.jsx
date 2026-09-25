@@ -10,6 +10,7 @@ import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
 import StudentAcademicModule from "./StudentAcademicModule";
 import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
+import AdaptiveRoleModule from "./AdaptiveRoleModule";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout }) {
@@ -51,7 +52,7 @@ export default function Shell({ user, onLogout }) {
   } else if ((user.role === "Auditor" && active === "Audit Trail") || (user.role === "Institution Admin" && active === "Audit")) {
     content = <Audit />;
   } else {
-    content = <RoleModule title={active} user={user} />;
+    content = <AdaptiveRoleModule title={active} user={user} ui={ui} />;
   }
 
   const initials = user.name

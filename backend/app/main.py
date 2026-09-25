@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -137,6 +137,41 @@ def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institutio
     child=db.scalar(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.parent_id==unit_id))
     if child: raise HTTPException(409,"Remove child units before deleting this item")
     audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
+    return {"ok":True}
+
+@app.get("/api/v1/academic-assignments")
+def academic_assignments(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    st=select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id)
+    if user.role in {"Student","Teacher"}: st=st.where(AcademicAssignment.user_id==user.id)
+    elif user.role not in {"Institution Admin","Campus Admin","Auditor"}: raise HTTPException(403,"Academic assignments are not available for your role")
+    rows=db.scalars(st.order_by(AcademicAssignment.id.desc())).all()
+    result=[]
+    for r in rows:
+        assigned=db.get(User,r.user_id); unit=db.get(AcademicUnit,r.unit_id)
+        if assigned and unit:
+            result.append({"id":r.id,"user_id":r.user_id,"user_name":assigned.name,"user_role":assigned.role,"unit_id":r.unit_id,"unit_name":unit.name,"unit_type":unit.unit_type,"assignment_type":r.assignment_type,"status":r.status})
+    return result
+
+@app.post("/api/v1/academic-assignments")
+def create_academic_assignment(payload:AcademicAssignmentIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    assigned=db.get(User,payload.user_id); unit=db.get(AcademicUnit,payload.unit_id)
+    if not assigned or assigned.tenant_id!=user.tenant_id: raise HTTPException(400,"Invalid user")
+    if assigned.role not in {"Student","Teacher"}: raise HTTPException(400,"Only Student or Teacher users can receive academic assignments")
+    if not unit or unit.tenant_id!=user.tenant_id: raise HTTPException(400,"Invalid academic unit")
+    assignment_type=payload.assignment_type.strip().upper()
+    allowed={"ENROLLMENT","COURSE_REGISTRATION","SECTION_ASSIGNMENT","FACULTY_ASSIGNMENT","ADVISOR_ASSIGNMENT"}
+    if assignment_type not in allowed: raise HTTPException(400,"Unsupported assignment type")
+    existing=db.scalar(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==assigned.id,AcademicAssignment.unit_id==unit.id,AcademicAssignment.assignment_type==assignment_type))
+    if existing: raise HTTPException(409,"This academic assignment already exists")
+    row=AcademicAssignment(tenant_id=user.tenant_id,user_id=assigned.id,unit_id=unit.id,assignment_type=assignment_type,status=payload.status)
+    db.add(row); audit(db,user,"CREATE","academic_assignment",f"{assigned.email}:{assignment_type}:{unit.code}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"user_name":assigned.name,"unit_name":unit.name,"assignment_type":row.assignment_type,"status":row.status}
+
+@app.delete("/api/v1/academic-assignments/{assignment_id}")
+def delete_academic_assignment(assignment_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(AcademicAssignment,assignment_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Academic assignment not found")
+    audit(db,user,"DELETE","academic_assignment",str(row.id)); db.delete(row); db.commit()
     return {"ok":True}
 
 @app.get("/api/v1/navigation")

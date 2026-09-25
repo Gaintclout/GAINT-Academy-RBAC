@@ -83,3 +83,16 @@ class Audit(Base):
     resource: Mapped[str] = mapped_column(String(180))
     details: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AcademicUnit(Base):
+    __tablename__ = "academic_units"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    unit_type: Mapped[str] = mapped_column(String(40), index=True)
+    name: Mapped[str] = mapped_column(String(180))
+    code: Mapped[str] = mapped_column(String(60))
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("academic_units.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

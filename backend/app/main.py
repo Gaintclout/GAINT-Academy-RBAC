@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -199,6 +199,46 @@ def users(
         {"id":x.id,"name":x.name,"email":x.email,"role":x.role,"campus_id":x.campus_id,"is_active":x.is_active}
         for x in rows
     ]
+
+def _assigned_unit_ids(db:Session,user:User):
+    return set(db.scalars(select(AcademicAssignment.unit_id).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==user.id,AcademicAssignment.status=="Active")).all())
+
+def _record_unit_id(record:Record):
+    if not record.code.startswith("UNIT:"): return None
+    try: return int(record.code.split("|",1)[0].split(":",1)[1])
+    except (ValueError,IndexError): return None
+
+@app.get("/api/v1/my-academics")
+def my_academics(user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):
+    assignments=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==user.id,AcademicAssignment.status=="Active").order_by(AcademicAssignment.id)).all()
+    result=[]
+    for a in assignments:
+        unit=db.get(AcademicUnit,a.unit_id)
+        if unit: result.append({"assignment_id":a.id,"assignment_type":a.assignment_type,"unit_id":unit.id,"unit_type":unit.unit_type,"name":unit.name,"code":unit.code,"status":a.status})
+    return result
+
+@app.get("/api/v1/academic-activities")
+def academic_activities(module:str,user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):
+    if not can(user.role,module,"view"): raise HTTPException(403,"This academic module is not available for your role")
+    unit_ids=_assigned_unit_ids(db,user)
+    if not unit_ids: return []
+    rows=db.scalars(select(Record).where(Record.tenant_id==user.tenant_id,Record.module==module).order_by(Record.id.desc())).all()
+    result=[]
+    for r in rows:
+        unit_id=_record_unit_id(r)
+        if unit_id in unit_ids:
+            result.append({"id":r.id,"module":r.module,"name":r.name,"code":r.code.split("|",1)[1] if "|" in r.code else "","category":r.category,"status":r.status,"notes":r.notes,"unit_id":unit_id})
+    return result
+
+@app.post("/api/v1/academic-activities")
+def create_academic_activity(payload:AcademicActivityIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    if not can(user.role,payload.module,"create"): raise HTTPException(403,"You cannot create this academic activity")
+    if payload.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(403,"This course or section is not assigned to you")
+    unit=db.get(AcademicUnit,payload.unit_id)
+    if not unit or unit.tenant_id!=user.tenant_id: raise HTTPException(400,"Invalid academic unit")
+    r=Record(tenant_id=user.tenant_id,campus_id=user.campus_id,module=payload.module,name=payload.name,code=f"UNIT:{unit.id}|{payload.code}",category=payload.category,status=payload.status,notes=payload.notes)
+    db.add(r); audit(db,user,"CREATE",payload.module,f"{unit.code}:{payload.name}"); db.commit(); db.refresh(r)
+    return {"id":r.id,"module":r.module,"name":r.name,"unit_id":unit.id,"unit_name":unit.name,"status":r.status}
 
 @app.get("/api/v1/records")
 def records(

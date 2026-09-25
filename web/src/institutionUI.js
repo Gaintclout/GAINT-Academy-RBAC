@@ -103,13 +103,14 @@ export const INSTITUTION_UI = {
   }
 };
 
-export function resolveInstitutionType() {
-  const configured = String(import.meta.env.VITE_INSTITUTION_TYPE || "UNIVERSITY").toUpperCase();
+export function resolveInstitutionType(user) {
+  const configured = String(user?.institution?.institution_type || import.meta.env.VITE_INSTITUTION_TYPE || "UNIVERSITY").toUpperCase();
   return INSTITUTION_UI[configured] ? configured : "UNIVERSITY";
 }
 
-export function getInstitutionUI() {
-  return INSTITUTION_UI[resolveInstitutionType()];
+export function getInstitutionUI(user) {
+  const base = INSTITUTION_UI[resolveInstitutionType(user)];
+  return user?.institution?.name ? { ...base, institutionName: user.institution.name } : base;
 }
 
 export function displayMenuLabel(item, ui = getInstitutionUI()) {

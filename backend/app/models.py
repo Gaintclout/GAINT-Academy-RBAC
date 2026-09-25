@@ -137,3 +137,29 @@ class StudentAcademicWork(Base):
     grade: Mapped[str] = mapped_column(String(20), default="")
     feedback: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(30), default="PENDING")
+
+
+class ClassSession(Base):
+    __tablename__ = "class_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("academic_units.id"), index=True)
+    teacher_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    starts_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    ends_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    room: Mapped[str] = mapped_column(String(80), default="")
+    status: Mapped[str] = mapped_column(String(30), default="SCHEDULED")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+class AttendanceEntry(Base):
+    __tablename__ = "attendance_entries"
+    __table_args__ = (UniqueConstraint("session_id","student_user_id", name="uq_session_student_attendance"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("class_sessions.id"), index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="PRESENT")
+    note: Mapped[str] = mapped_column(Text, default="")
+    marked_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    marked_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

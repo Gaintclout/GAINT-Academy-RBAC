@@ -50,3 +50,13 @@ class AcademicAssignmentIn(BaseModel):
     unit_id: int
     assignment_type: str
     status: str = "Active"
+
+
+class AcademicActivityIn(BaseModel):
+    module: str
+    unit_id: int
+    name: str = Field(min_length=2, max_length=180)
+    code: str = ""
+    category: str = "General"
+    status: str = "Active"
+    notes: str = ""

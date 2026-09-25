@@ -28,3 +28,9 @@ class SosIn(BaseModel):
 
 class AIChatRequest(BaseModel):
     message: str
+
+
+class InstitutionIn(BaseModel):
+    name: str = Field(min_length=2, max_length=180)
+    institution_type: str
+    code: str = Field(min_length=2, max_length=50)

@@ -96,3 +96,15 @@ class AcademicUnit(Base):
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("academic_units.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="Active")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AcademicAssignment(Base):
+    __tablename__ = "academic_assignments"
+    __table_args__ = (UniqueConstraint("tenant_id","user_id","unit_id","assignment_type", name="uq_academic_assignment"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("academic_units.id"), index=True)
+    assignment_type: Mapped[str] = mapped_column(String(30), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

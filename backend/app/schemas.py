@@ -43,3 +43,10 @@ class AcademicUnitIn(BaseModel):
     parent_id: Optional[int] = None
     campus_id: int = 1
     status: str = "Active"
+
+
+class AcademicAssignmentIn(BaseModel):
+    user_id: int
+    unit_id: int
+    assignment_type: str
+    status: str = "Active"

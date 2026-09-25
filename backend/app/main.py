@@ -1,4 +1,5 @@
 from typing import Optional
+import datetime as dt
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, desc
@@ -6,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -239,6 +240,77 @@ def create_academic_activity(payload:AcademicActivityIn,user:User=Depends(requir
     r=Record(tenant_id=user.tenant_id,campus_id=user.campus_id,module=payload.module,name=payload.name,code=f"UNIT:{unit.id}|{payload.code}",category=payload.category,status=payload.status,notes=payload.notes)
     db.add(r); audit(db,user,"CREATE",payload.module,f"{unit.code}:{payload.name}"); db.commit(); db.refresh(r)
     return {"id":r.id,"module":r.module,"name":r.name,"unit_id":unit.id,"unit_name":unit.name,"status":r.status}
+
+def _parse_due_at(value):
+    if not value: return None
+    try: return dt.datetime.fromisoformat(value.replace("Z","+00:00")).replace(tzinfo=None)
+    except ValueError: raise HTTPException(400,"Invalid due date")
+
+def _students_for_unit(db:Session,tenant_id:int,unit_id:int):
+    ids=db.scalars(select(AcademicAssignment.user_id).where(AcademicAssignment.tenant_id==tenant_id,AcademicAssignment.unit_id==unit_id,AcademicAssignment.status=="Active",AcademicAssignment.assignment_type.in_(["COURSE_REGISTRATION","SECTION_ASSIGNMENT","ENROLLMENT"]))).all()
+    return set(ids)
+
+@app.get("/api/v1/academic-work")
+def list_academic_work(work_type:Optional[str]=None,user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):
+    unit_ids=_assigned_unit_ids(db,user)
+    if not unit_ids: return []
+    st=select(AcademicWork).where(AcademicWork.tenant_id==user.tenant_id,AcademicWork.unit_id.in_(unit_ids))
+    if work_type: st=st.where(AcademicWork.work_type==work_type.upper())
+    rows=db.scalars(st.order_by(AcademicWork.id.desc())).all()
+    result=[]
+    for w in rows:
+        item={"id":w.id,"unit_id":w.unit_id,"work_type":w.work_type,"title":w.title,"description":w.description,"max_marks":w.max_marks,"due_at":w.due_at,"status":w.status}
+        if user.role=="Student":
+            sub=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==w.id,StudentAcademicWork.student_user_id==user.id))
+            item["submission"]=None if not sub else {"status":sub.status,"submitted_at":sub.submitted_at,"marks":sub.marks,"grade":sub.grade,"feedback":sub.feedback}
+        result.append(item)
+    return result
+
+@app.post("/api/v1/academic-work")
+def create_work(payload:AcademicWorkIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    kind=payload.work_type.strip().upper()
+    if kind not in {"HOMEWORK","ASSIGNMENT","EXAM"}: raise HTTPException(400,"Unsupported academic work type")
+    if payload.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(403,"This course or section is not assigned to you")
+    w=AcademicWork(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,work_type=kind,title=payload.title,description=payload.description,max_marks=payload.max_marks,due_at=_parse_due_at(payload.due_at))
+    db.add(w); audit(db,user,"CREATE",kind,payload.title); db.commit(); db.refresh(w)
+    return {"id":w.id,"title":w.title,"work_type":w.work_type,"status":w.status}
+
+@app.post("/api/v1/academic-work/{work_id}/submit")
+def submit_work(work_id:int,payload:SubmissionIn,user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    w=db.get(AcademicWork,work_id)
+    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
+    sub=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work_id,StudentAcademicWork.student_user_id==user.id))
+    if not sub:
+        sub=StudentAcademicWork(tenant_id=user.tenant_id,work_id=work_id,student_user_id=user.id)
+        db.add(sub)
+    sub.submission_text=payload.submission_text; sub.submitted_at=dt.datetime.utcnow(); sub.status="SUBMITTED"
+    audit(db,user,"SUBMIT",w.work_type,w.title); db.commit(); db.refresh(sub)
+    return {"id":sub.id,"status":sub.status,"submitted_at":sub.submitted_at}
+
+@app.get("/api/v1/academic-work/{work_id}/submissions")
+def work_submissions(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    w=db.get(AcademicWork,work_id)
+    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
+    students=_students_for_unit(db,user.tenant_id,w.unit_id)
+    result=[]
+    for sid in students:
+        student=db.get(User,sid); sub=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work_id,StudentAcademicWork.student_user_id==sid))
+        result.append({"student_id":sid,"student_name":student.name if student else "Student","submission_id":sub.id if sub else None,"status":sub.status if sub else "PENDING","marks":sub.marks if sub else None,"grade":sub.grade if sub else "","feedback":sub.feedback if sub else ""})
+    return result
+
+@app.put("/api/v1/academic-work/{work_id}/students/{student_id}/grade")
+def grade_work(work_id:int,student_id:int,payload:GradeIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    w=db.get(AcademicWork,work_id)
+    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
+    if student_id not in _students_for_unit(db,user.tenant_id,w.unit_id): raise HTTPException(400,"Student is not enrolled in this course or section")
+    if w.max_marks and payload.marks>w.max_marks: raise HTTPException(400,"Marks cannot exceed maximum marks")
+    sub=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work_id,StudentAcademicWork.student_user_id==student_id))
+    if not sub:
+        sub=StudentAcademicWork(tenant_id=user.tenant_id,work_id=work_id,student_user_id=student_id)
+        db.add(sub)
+    sub.marks=payload.marks; sub.grade=payload.grade.strip(); sub.feedback=payload.feedback; sub.status="GRADED"
+    audit(db,user,"GRADE",w.work_type,f"{w.title}:student={student_id}"); db.commit()
+    return {"ok":True,"marks":sub.marks,"grade":sub.grade,"status":sub.status}
 
 @app.get("/api/v1/records")
 def records(

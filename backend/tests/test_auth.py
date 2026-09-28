@@ -140,3 +140,65 @@ def test_admin_parent_student_link_management():
 def test_non_admin_cannot_manage_parent_student_links():
     teacher=_login("teacher@gaintacademy.com")
     assert client.get("/api/v1/admin/parent-student-links",headers=teacher).status_code==403
+
+
+def test_admissions_lifecycle_and_history():
+    admin=_login("admin@gaintacademy.com")
+    units=client.get("/api/v1/academic-structure",headers=admin).json()
+    program=next(x for x in units if x["unit_type"] in {"PROGRAM","ACADEMIC_PERIOD"})
+    sections=[x for x in units if x["unit_type"]=="SECTION_BATCH"]
+    assert sections
+    email="admission.lifecycle@test.local"
+    users=client.get("/api/v1/users",headers=admin).json()
+    existing=next((x for x in users if x["email"]==email),None)
+    if existing:
+        student_id=existing["id"]
+    else:
+        r=client.post("/api/v1/admissions/enroll-student",headers=admin,json={
+            "name":"Admission Lifecycle","email":email,"password":"Student@123",
+            "campus_id":1,"program_unit_id":program["id"],"section_unit_id":sections[0]["id"],
+            "course_unit_ids":[],"parent_user_id":None,"relationship":"Guardian"
+        })
+        assert r.status_code==200, r.text
+        student_id=r.json()["id"]
+    profile=client.get(f"/api/v1/admissions/students/{student_id}/profile",headers=admin)
+    assert profile.status_code==200
+    assert profile.json()["status"]=="Active"
+    if len(sections)>1:
+        moved=client.patch(f"/api/v1/admissions/students/{student_id}",headers=admin,json={"section_unit_id":sections[1]["id"]})
+        assert moved.status_code==200
+    withdrawn=client.patch(f"/api/v1/admissions/students/{student_id}",headers=admin,json={"status":"Withdrawn"})
+    assert withdrawn.status_code==200
+    reactivated=client.patch(f"/api/v1/admissions/students/{student_id}",headers=admin,json={"status":"Active"})
+    assert reactivated.status_code==200
+    history=client.get(f"/api/v1/admissions/students/{student_id}/history",headers=admin)
+    assert history.status_code==200
+    events={x["event_type"] for x in history.json()}
+    assert "ENROLLED" in events
+    assert "WITHDRAWN" in events
+    assert "REACTIVATED" in events
+
+def test_admissions_endpoints_reject_non_admin_roles():
+    teacher=_login("teacher@gaintacademy.com")
+    assert client.get("/api/v1/admissions/students",headers=teacher).status_code==403
+    assert client.get("/api/v1/admissions/summary",headers=teacher).status_code==403
+    assert client.post("/api/v1/admissions/enroll-student",headers=teacher,json={
+        "name":"Blocked Student","email":"blocked.admission@test.local","password":"Student@123",
+        "campus_id":1,"program_unit_id":1,"course_unit_ids":[]
+    }).status_code==403
+
+def test_admissions_guardian_link_is_reflected_in_student_list():
+    admin=_login("admin@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    parent=next(x for x in users if x["role"]=="Parent / Guardian")
+    student=next(x for x in users if x["role"]=="Student")
+    links=client.get("/api/v1/admin/parent-student-links",headers=admin).json()
+    if not any(x["parent_user_id"]==parent["id"] and x["student_user_id"]==student["id"] for x in links):
+        r=client.post("/api/v1/admin/parent-student-links",headers=admin,json={
+            "parent_user_id":parent["id"],"student_user_id":student["id"],"relationship":"Guardian"
+        })
+        assert r.status_code==200
+    rows=client.get("/api/v1/admissions/students",headers=admin)
+    assert rows.status_code==200
+    target=next(x for x in rows.json() if x["id"]==student["id"])
+    assert target["has_guardian"] is True

@@ -36,6 +36,14 @@ jobs:
         run: alembic upgrade head
       - name: Import FastAPI application
         run: python -c "from app.main import app; print(app.title)"
+      - name: Verify production startup guard
+        env:
+          APP_ENV: production
+          AUTO_CREATE_SCHEMA: "false"
+          SEED_DEMO_DATA: "false"
+          SECRET_KEY: ci-production-secret-not-for-deployment
+        run: python -c "from app.main import app; print(app.title)"
+
       - name: Run backend tests
         env:
           PYTHONPATH: .

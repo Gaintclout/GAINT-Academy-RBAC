@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -168,6 +168,56 @@ def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institutio
     child=db.scalar(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.parent_id==unit_id))
     if child: raise HTTPException(409,"Remove child units before deleting this item")
     audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
+    return {"ok":True}
+
+@app.put("/api/v1/admin/students/{student_id}/academics")
+def admin_manage_student_academics(student_id:int,payload:StudentAcademicManagementIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    if payload.section_unit_id is not None:
+        section=db.get(AcademicUnit,payload.section_unit_id)
+        if not section or section.tenant_id!=user.tenant_id or section.unit_type!="SECTION_BATCH": raise HTTPException(400,"Invalid section or batch")
+        old=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.assignment_type=="SECTION_ASSIGNMENT")).all()
+        previous=old[0].unit_id if old else None
+        for row in old: db.delete(row)
+        db.add(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=section.id,assignment_type="SECTION_ASSIGNMENT",status="Active"))
+        if previous!=section.id: db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="SECTION_TRANSFER",from_unit_id=previous,to_unit_id=section.id,details="source=students",actor_user_id=user.id))
+    if payload.course_unit_ids is not None:
+        courses=[]
+        for unit_id in dict.fromkeys(payload.course_unit_ids):
+            unit=db.get(AcademicUnit,unit_id)
+            if not unit or unit.tenant_id!=user.tenant_id or unit.unit_type!="COURSE": raise HTTPException(400,"Invalid course")
+            courses.append(unit)
+        old=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.assignment_type=="COURSE_REGISTRATION")).all()
+        for row in old: db.delete(row)
+        db.add_all([AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=x.id,assignment_type="COURSE_REGISTRATION",status="Active") for x in courses])
+        db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="COURSES_UPDATED",details="courses="+",".join(str(x.id) for x in courses),actor_user_id=user.id))
+    audit(db,user,"UPDATE","student_academics",f"student={student.id}")
+    db.commit()
+    return {"ok":True}
+
+@app.put("/api/v1/admin/students/{student_id}/guardian")
+def admin_manage_student_guardian(student_id:int,payload:StudentGuardianManagementIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id); parent=db.get(User,payload.parent_user_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    if not parent or parent.tenant_id!=user.tenant_id or parent.role!="Parent / Guardian" or not parent.is_active: raise HTTPException(400,"Invalid parent or guardian")
+    old=db.scalars(select(ParentStudentLink).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id)).all()
+    for row in old: db.delete(row)
+    db.add(ParentStudentLink(parent_user_id=parent.id,student_user_id=student.id,relationship=payload.relationship.strip(),tenant_id=user.tenant_id))
+    db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="GUARDIAN_UPDATED",details=f"parent={parent.id};relationship={payload.relationship.strip()}",actor_user_id=user.id))
+    audit(db,user,"UPDATE","student_guardian",f"student={student.id};parent={parent.id}")
+    db.commit()
+    return {"ok":True}
+
+@app.delete("/api/v1/admin/students/{student_id}/guardian")
+def admin_remove_student_guardian(student_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    rows=db.scalars(select(ParentStudentLink).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id)).all()
+    for row in rows: db.delete(row)
+    db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="GUARDIAN_REMOVED",details="",actor_user_id=user.id))
+    audit(db,user,"DELETE","student_guardian",f"student={student.id}")
+    db.commit()
     return {"ok":True}
 
 @app.patch("/api/v1/admin/students/{student_id}")

@@ -211,7 +211,11 @@ def update_admission(student_id:int,payload:StudentEnrollmentUpdate,user:User=De
     if "status" in data:
         status=(data["status"] or "").strip().upper()
         if status not in {"ACTIVE","WITHDRAWN"}: raise HTTPException(400,"Status must be Active or Withdrawn")
-        previous="ACTIVE" if student.is_active else "WITHDRAWN"\n        student.is_active=status=="ACTIVE"\n        if previous!=status: db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="REACTIVATED" if status=="ACTIVE" else "WITHDRAWN",details=f"from={previous};to={status}",actor_user_id=user.id))\n        audit(db,user,"UPDATE","student_enrollment",f"student={student.id};status={status}")
+        previous="ACTIVE" if student.is_active else "WITHDRAWN"
+        student.is_active=status=="ACTIVE"
+        if previous!=status:
+            db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="REACTIVATED" if status=="ACTIVE" else "WITHDRAWN",details=f"from={previous};to={status}",actor_user_id=user.id))
+        audit(db,user,"UPDATE","student_enrollment",f"student={student.id};status={status}")
     db.commit()
     return {"ok":True,"student_id":student.id,"status":"Active" if student.is_active else "Withdrawn"}
 

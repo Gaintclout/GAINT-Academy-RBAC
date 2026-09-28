@@ -737,14 +737,33 @@ def create_fee_ledger(payload:FeeLedgerIn,user:User=Depends(require_roles("Accou
     db.add(row); db.flush(); audit(db,user,"CREATE","fee_ledger",f"student={student.id};fee={code};amount={payload.amount_due}"); db.commit(); db.refresh(row)
     return _fee_payload(row)
 
+@app.post("/api/v1/fee-ledger/{ledger_id}/cancel")
+def cancel_fee_ledger(ledger_id:int,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(FeeLedger,ledger_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    if row.amount_paid>0: raise HTTPException(409,"A fee with recorded payments cannot be cancelled")
+    if row.status=="CANCELLED": return _fee_payload(row)
+    row.status="CANCELLED"; audit(db,user,"CANCEL","fee_ledger",f"ledger={row.id};student={row.student_user_id}"); db.commit()
+    return _fee_payload(row)
+
+@app.get("/api/v1/finance/summary")
+def finance_summary(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)).all()
+    active=[x for x in rows if x.status!="CANCELLED"]
+    assigned=sum(x.amount_due for x in active); collected=sum(x.amount_paid for x in active); outstanding=max(0.0,assigned-collected)
+    return {"assigned":assigned,"collected":collected,"outstanding":outstanding,"ledger_count":len(active),"paid_count":sum(1 for x in active if x.amount_paid>=x.amount_due),"partial_count":sum(1 for x in active if 0<x.amount_paid<x.amount_due),"due_count":sum(1 for x in active if x.amount_paid<=0)}
+
 @app.post("/api/v1/fee-ledger/{ledger_id}/payments")
 def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
     row=db.get(FeeLedger,ledger_id)
     if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    if row.status=="CANCELLED": raise HTTPException(409,"Cancelled fees cannot receive payments")
     balance=max(0.0,row.amount_due-row.amount_paid)
+    reference=payload.reference.strip()
+    if reference and db.scalar(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id,FeePayment.reference==reference)): raise HTTPException(409,"This payment reference has already been recorded")
     if payload.amount>balance: raise HTTPException(400,"Payment cannot exceed outstanding balance")
-    receipt=f"GAINT-{user.tenant_id}-{ledger_id}-{int(dt.datetime.utcnow().timestamp())}"
-    payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payload.amount,reference=payload.reference.strip(),receipt_no=receipt,recorded_by=user.id)
+    receipt=f"GAINT-{user.tenant_id}-{dt.datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{ledger_id}"
+    payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payload.amount,reference=reference,receipt_no=receipt,recorded_by=user.id)
     row.amount_paid+=payload.amount; row.status="PAID" if row.amount_paid>=row.amount_due else "PARTIAL"
     db.add(payment); audit(db,user,"PAYMENT","fee_ledger",f"student={row.student_user_id};receipt={receipt};amount={payload.amount}"); db.commit()
     return {"ok":True,"receipt_no":receipt,"ledger":_fee_payload(row)}

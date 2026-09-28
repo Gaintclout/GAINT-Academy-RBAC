@@ -105,3 +105,22 @@ def test_admin_rejects_unsupported_role():
     target=next(x for x in users if x["role"]=="Student")
     r=client.patch(f"/api/v1/users/{target['id']}",headers=admin,json={"role":"Super Admin"})
     assert r.status_code==400
+
+
+def test_admin_can_create_tenant_locked_user():
+    admin=_login("admin@gaintacademy.com")
+    r=client.post("/api/v1/users",headers=admin,json={"name":"New Teacher","email":"new.teacher@test.local","password":"Teacher@123","role":"Teacher","campus_id":1})
+    assert r.status_code==200
+    assert r.json()["role"]=="Teacher"
+
+def test_user_creation_rejects_duplicate_email_and_weak_password():
+    admin=_login("admin@gaintacademy.com")
+    duplicate=client.post("/api/v1/users",headers=admin,json={"name":"Duplicate","email":"student@gaintacademy.com","password":"Strong@123","role":"Student","campus_id":1})
+    assert duplicate.status_code==409
+    weak=client.post("/api/v1/users",headers=admin,json={"name":"Weak User","email":"weak@test.local","password":"password","role":"Student","campus_id":1})
+    assert weak.status_code==400
+
+def test_non_admin_cannot_create_user():
+    teacher=_login("teacher@gaintacademy.com")
+    r=client.post("/api/v1/users",headers=teacher,json={"name":"Blocked User","email":"blocked@test.local","password":"Blocked@123","role":"Student","campus_id":1})
+    assert r.status_code==403

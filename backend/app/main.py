@@ -401,7 +401,23 @@ def create_class_session(payload:ClassSessionIn,user:User=Depends(require_roles(
     if unit.unit_type not in {"COURSE","SECTION_BATCH"}: raise HTTPException(400,"Class sessions can only be scheduled for a Course or Section / Batch")
     start=_parse_due_at(payload.starts_at); end=_parse_due_at(payload.ends_at)
     if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
-    row=ClassSession(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,title=payload.title,starts_at=start,ends_at=end,room=payload.room)
+    overlap=select(ClassSession).where(
+        ClassSession.tenant_id==user.tenant_id,
+        ClassSession.starts_at < end,
+        ClassSession.ends_at > start,
+    )
+    teacher_conflict=db.scalar(overlap.where(ClassSession.teacher_user_id==user.id))
+    if teacher_conflict:
+        raise HTTPException(409,f"Teacher already has an overlapping class session: {teacher_conflict.title}")
+    unit_conflict=db.scalar(overlap.where(ClassSession.unit_id==payload.unit_id))
+    if unit_conflict:
+        raise HTTPException(409,f"This course or section already has an overlapping class session: {unit_conflict.title}")
+    room=(payload.room or "").strip()
+    if room:
+        room_conflict=db.scalar(overlap.where(ClassSession.room==room))
+        if room_conflict:
+            raise HTTPException(409,f"Room is already booked for an overlapping class session: {room_conflict.title}")
+    row=ClassSession(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,title=payload.title,starts_at=start,ends_at=end,room=room)
     db.add(row); audit(db,user,"CREATE","class_session",payload.title); db.commit(); db.refresh(row)
     return {"id":row.id,"title":row.title,"status":row.status}
 

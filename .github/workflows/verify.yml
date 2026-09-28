@@ -35,7 +35,9 @@ jobs:
       - name: Import FastAPI application
         run: python -c "from app.main import app; print(app.title)"
       - name: Run backend tests
-        run: pytest -q
+        env:
+          PYTHONPATH: .
+        run: python -m pytest -q
 
   frontend:
     name: Frontend production build

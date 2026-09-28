@@ -700,6 +700,23 @@ def parent_children(
             })
     return result
 
+@app.get("/api/v1/parents/children/{student_id}/fees")
+def parent_child_fees(student_id:int,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    student=_linked_child(db,user,student_id)
+    # Finance currently uses the generic Record store. Restrict records to this
+    # child only when the student identity is explicitly encoded in the record.
+    tokens={f"STUDENT:{student.id}",student.email.lower()}
+    rows=db.scalars(select(Record).where(
+        Record.tenant_id==user.tenant_id,
+        Record.module.in_(["Fees","Payments","Receipts"]),
+    ).order_by(Record.id.desc())).all()
+    items=[]
+    for row in rows:
+        haystack=f"{row.code} {row.notes}".lower()
+        if not any(token.lower() in haystack for token in tokens): continue
+        items.append({"id":row.id,"module":row.module,"name":row.name,"code":row.code,"category":row.category,"status":row.status,"notes":row.notes,"created_at":row.created_at})
+    return {"student":{"id":student.id,"name":student.name,"email":student.email},"records":items,"payment_ready":False,"message":"Student-linked fee records are shown. A dedicated fee ledger is required before enabling production payments."}
+
 def _linked_child(db:Session,parent:User,student_id:int):
     link=db.scalar(select(ParentStudentLink).where(
         ParentStudentLink.parent_user_id==parent.id,

@@ -191,3 +191,30 @@ class ExamResult(Base):
     remarks: Mapped[str] = mapped_column(Text, default="")
     published: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class FeeLedger(Base):
+    __tablename__ = "fee_ledgers"
+    __table_args__ = (UniqueConstraint("tenant_id","student_user_id","fee_code", name="uq_student_fee_code"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    fee_code: Mapped[str] = mapped_column(String(60), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    amount_due: Mapped[float] = mapped_column(Float)
+    amount_paid: Mapped[float] = mapped_column(Float, default=0)
+    due_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="DUE")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+class FeePayment(Base):
+    __tablename__ = "fee_payments"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    ledger_id: Mapped[int] = mapped_column(ForeignKey("fee_ledgers.id"), index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    reference: Mapped[str] = mapped_column(String(100), default="")
+    receipt_no: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    paid_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

@@ -110,6 +110,19 @@ class AcademicAssignment(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class EnrollmentHistory(Base):
+    __tablename__ = "enrollment_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(40), index=True)
+    from_unit_id: Mapped[int | None] = mapped_column(ForeignKey("academic_units.id"), nullable=True)
+    to_unit_id: Mapped[int | None] = mapped_column(ForeignKey("academic_units.id"), nullable=True)
+    details: Mapped[str] = mapped_column(Text, default="")
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AcademicWork(Base):
     __tablename__ = "academic_work"
     id: Mapped[int] = mapped_column(primary_key=True)

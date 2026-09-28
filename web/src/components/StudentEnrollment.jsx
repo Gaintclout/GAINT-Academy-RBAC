@@ -10,7 +10,6 @@ export default function StudentEnrollment(){
  const filtered=students.filter(x=>{
   const text=(x.name+" "+x.email+" "+x.status).toLowerCase().includes(query.toLowerCase());
   const hasSection=x.assignments.some(a=>a.assignment_type==="SECTION_ASSIGNMENT");
-  const hasGuardian=users.some(u=>u.role==="Parent / Guardian") && null;
   if(!text)return false;
   if(qualityFilter==="ACTIVE")return x.status==="Active";
   if(qualityFilter==="WITHDRAWN")return x.status==="Withdrawn";

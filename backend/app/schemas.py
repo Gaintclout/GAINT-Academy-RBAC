@@ -149,3 +149,8 @@ class StudentEnrollmentIn(BaseModel):
     course_unit_ids: list[int] = Field(default_factory=list)
     parent_user_id: Optional[int] = None
     relationship: str = Field(default="Guardian", min_length=2, max_length=40)
+
+
+class StudentEnrollmentUpdate(BaseModel):
+    section_unit_id: Optional[int] = None
+    status: Optional[str] = None

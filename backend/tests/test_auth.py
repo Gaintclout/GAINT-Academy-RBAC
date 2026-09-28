@@ -85,3 +85,23 @@ def test_parent_cannot_open_staff_module():
     h=_login("parent@gaintacademy.com")
     r=client.get("/api/v1/module-access/Staff",headers=h)
     assert r.status_code==403
+
+
+def test_non_admin_cannot_modify_users():
+    student=_login("student@gaintacademy.com")
+    me=client.get("/api/v1/auth/me",headers=student).json()
+    r=client.patch(f"/api/v1/users/{me['id']}",headers=student,json={"name":"Changed"})
+    assert r.status_code==403
+
+def test_admin_cannot_remove_own_admin_role_or_deactivate_self():
+    admin=_login("admin@gaintacademy.com")
+    me=client.get("/api/v1/auth/me",headers=admin).json()
+    assert client.patch(f"/api/v1/users/{me['id']}",headers=admin,json={"role":"Teacher"}).status_code==409
+    assert client.patch(f"/api/v1/users/{me['id']}",headers=admin,json={"is_active":False}).status_code==409
+
+def test_admin_rejects_unsupported_role():
+    admin=_login("admin@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    target=next(x for x in users if x["role"]=="Student")
+    r=client.patch(f"/api/v1/users/{target['id']}",headers=admin,json={"role":"Super Admin"})
+    assert r.status_code==400

@@ -162,6 +162,23 @@ def create_academic_assignment(payload:AcademicAssignmentIn,user:User=Depends(re
     assignment_type=payload.assignment_type.strip().upper()
     allowed={"ENROLLMENT","COURSE_REGISTRATION","SECTION_ASSIGNMENT","FACULTY_ASSIGNMENT","ADVISOR_ASSIGNMENT"}
     if assignment_type not in allowed: raise HTTPException(400,"Unsupported assignment type")
+
+    student_rules={
+        "ENROLLMENT":{"PROGRAM","ACADEMIC_PERIOD"},
+        "COURSE_REGISTRATION":{"COURSE"},
+        "SECTION_ASSIGNMENT":{"SECTION_BATCH"},
+    }
+    teacher_rules={
+        "FACULTY_ASSIGNMENT":{"COURSE","SECTION_BATCH"},
+        "ADVISOR_ASSIGNMENT":{"PROGRAM","SECTION_BATCH"},
+    }
+    role_rules=student_rules if assigned.role=="Student" else teacher_rules
+    if assignment_type not in role_rules:
+        raise HTTPException(400,f"{assignment_type} is not valid for role {assigned.role}")
+    if unit.unit_type not in role_rules[assignment_type]:
+        expected=", ".join(sorted(role_rules[assignment_type]))
+        raise HTTPException(400,f"{assignment_type} requires academic unit type: {expected}")
+
     existing=db.scalar(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==assigned.id,AcademicAssignment.unit_id==unit.id,AcademicAssignment.assignment_type==assignment_type))
     if existing: raise HTTPException(409,"This academic assignment already exists")
     row=AcademicAssignment(tenant_id=user.tenant_id,user_id=assigned.id,unit_id=unit.id,assignment_type=assignment_type,status=payload.status)

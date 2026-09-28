@@ -124,3 +124,19 @@ def test_non_admin_cannot_create_user():
     teacher=_login("teacher@gaintacademy.com")
     r=client.post("/api/v1/users",headers=teacher,json={"name":"Blocked User","email":"blocked@test.local","password":"Blocked@123","role":"Student","campus_id":1})
     assert r.status_code==403
+
+
+def test_admin_parent_student_link_management():
+    admin=_login("admin@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    parent=next(x for x in users if x["role"]=="Parent / Guardian")
+    student=next(x for x in users if x["role"]=="Student")
+    existing=client.get("/api/v1/admin/parent-student-links",headers=admin)
+    assert existing.status_code==200
+    if not any(x["parent_user_id"]==parent["id"] and x["student_user_id"]==student["id"] for x in existing.json()):
+        made=client.post("/api/v1/admin/parent-student-links",headers=admin,json={"parent_user_id":parent["id"],"student_user_id":student["id"],"relationship":"Guardian"})
+        assert made.status_code==200
+
+def test_non_admin_cannot_manage_parent_student_links():
+    teacher=_login("teacher@gaintacademy.com")
+    assert client.get("/api/v1/admin/parent-student-links",headers=teacher).status_code==403

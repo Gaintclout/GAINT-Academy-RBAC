@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate
-from .security import verify_password, create_token, current_user, require_roles
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate
+from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
 
@@ -247,6 +247,29 @@ def users(
         {"id":x.id,"name":x.name,"email":x.email,"role":x.role,"campus_id":x.campus_id,"is_active":x.is_active}
         for x in rows
     ]
+
+@app.post("/api/v1/users")
+def create_user(
+    payload:UserAdminCreate,
+    user:User=Depends(require_roles("Institution Admin")),
+    db:Session=Depends(get_db),
+):
+    allowed_roles={"Institution Admin","Teacher","Student","Parent / Guardian","Accounts","HR","Campus Admin","Auditor"}
+    role=payload.role.strip()
+    if role not in allowed_roles: raise HTTPException(400,"Unsupported role")
+    email=payload.email.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise HTTPException(400,"Invalid email address")
+    if db.scalar(select(User).where(User.email==email)):
+        raise HTTPException(409,"Email address is already registered")
+    password=payload.password
+    if not (any(x.isalpha() for x in password) and any(x.isdigit() for x in password) and any(not x.isalnum() for x in password)):
+        raise HTTPException(400,"Password must contain a letter, number and special character")
+    target=User(email=email,name=payload.name.strip(),role=role,password_hash=hash_password(password),tenant_id=user.tenant_id,campus_id=payload.campus_id,is_active=True)
+    db.add(target); db.flush()
+    audit(db,user,"CREATE","user",f"user_id={target.id};role={role};campus={target.campus_id}")
+    db.commit(); db.refresh(target)
+    return {"id":target.id,"name":target.name,"email":target.email,"role":target.role,"campus_id":target.campus_id,"is_active":target.is_active}
 
 @app.patch("/api/v1/users/{target_user_id}")
 def update_user(

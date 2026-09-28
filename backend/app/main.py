@@ -491,9 +491,14 @@ def grade_rules(user:User=Depends(current_user),db:Session=Depends(get_db)):
 @app.post("/api/v1/grade-rules")
 def create_grade_rule(payload:GradeRuleIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     if payload.max_percentage<payload.min_percentage: raise HTTPException(400,"Maximum percentage must be greater than or equal to minimum percentage")
+    if payload.grade_point is not None and payload.grade_point<0: raise HTTPException(400,"Grade point cannot be negative")
+    result_status=payload.result_status.strip().upper()
+    if result_status not in {"PASS","FAIL"}: raise HTTPException(400,"Result status must be PASS or FAIL")
+    if not payload.name.strip() or not payload.grade.strip(): raise HTTPException(400,"Grade rule name and grade are required")
     overlap=db.scalar(select(GradeRule).where(GradeRule.tenant_id==user.tenant_id,GradeRule.min_percentage<=payload.max_percentage,GradeRule.max_percentage>=payload.min_percentage))
     if overlap: raise HTTPException(409,"Grade percentage range overlaps an existing rule")
-    r=GradeRule(tenant_id=user.tenant_id,**payload.model_dump())
+    data=payload.model_dump(); data["name"]=payload.name.strip(); data["grade"]=payload.grade.strip().upper(); data["result_status"]=result_status
+    r=GradeRule(tenant_id=user.tenant_id,**data)
     db.add(r); audit(db,user,"CREATE","grade_rule",f"{r.grade}:{r.min_percentage}-{r.max_percentage}"); db.commit(); db.refresh(r)
     return {"id":r.id,"grade":r.grade}
 
@@ -502,6 +507,16 @@ def delete_grade_rule(rule_id:int,user:User=Depends(require_roles("Institution A
     r=db.get(GradeRule,rule_id)
     if not r or r.tenant_id!=user.tenant_id: raise HTTPException(404,"Grade rule not found")
     db.delete(r); audit(db,user,"DELETE","grade_rule",r.grade); db.commit(); return {"ok":True}
+
+def _grading_scheme_gaps(db:Session,tenant_id:int):
+    rules=db.scalars(select(GradeRule).where(GradeRule.tenant_id==tenant_id).order_by(GradeRule.min_percentage,GradeRule.max_percentage)).all()
+    if not rules: return [(0.0,100.0)]
+    gaps=[]; cursor=0.0
+    for rule in rules:
+        if rule.min_percentage>cursor: gaps.append((cursor,rule.min_percentage))
+        cursor=max(cursor,rule.max_percentage)
+    if cursor<100.0: gaps.append((cursor,100.0))
+    return gaps
 
 def _grade_for(db:Session,tenant_id:int,percentage:float):
     return db.scalar(select(GradeRule).where(GradeRule.tenant_id==tenant_id,GradeRule.min_percentage<=percentage,GradeRule.max_percentage>=percentage).order_by(GradeRule.min_percentage.desc()))
@@ -541,6 +556,10 @@ def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_
 def publish_exam_results(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     exam=db.get(AcademicWork,work_id)
     if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    gaps=_grading_scheme_gaps(db,user.tenant_id)
+    if gaps:
+        formatted=", ".join(f"{a:g}-{b:g}%" for a,b in gaps)
+        raise HTTPException(409,f"Grading scheme is incomplete. Configure coverage for: {formatted}")
     student_ids=_students_for_unit(db,user.tenant_id,exam.unit_id)
     if not student_ids: raise HTTPException(409,"No enrolled students for this exam")
     rows=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()

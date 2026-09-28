@@ -13,7 +13,8 @@ export default function AcademicStructure({ui}){
  const [rows,setRows]=useState([]),[type,setType]=useState(labels[0][0]),[name,setName]=useState(""),[code,setCode]=useState(""),[parent,setParent]=useState(""),[msg,setMsg]=useState(""),[err,setErr]=useState("");
  const load=()=>api.get("/api/v1/academic-structure").then(r=>setRows(r.data)).catch(e=>setErr(e?.response?.data?.detail||"Unable to load academic structure."));
  useEffect(()=>{load()},[]);
- const parents=useMemo(()=>rows.filter(r=>r.id!==Number(parent)),[rows,parent]);
+ const parentType={SCHOOL_FACULTY:"CAMPUS",DEPARTMENT:"SCHOOL_FACULTY",PROGRAM:"DEPARTMENT",ACADEMIC_PERIOD:"PROGRAM",COURSE:"ACADEMIC_PERIOD",SECTION_BATCH:"COURSE"}[type];
+ const parents=useMemo(()=>parentType?rows.filter(r=>r.unit_type===parentType):[],[rows,parentType]);
  async function add(){try{setErr("");setMsg("");await api.post("/api/v1/academic-structure",{unit_type:type,name,code,parent_id:parent?Number(parent):null,campus_id:1,status:"Active"});setName("");setCode("");setParent("");setMsg("Academic unit added.");load()}catch(e){setErr(e?.response?.data?.detail||"Unable to add academic unit.")}}
  async function remove(id){if(!window.confirm("Delete this academic unit?"))return;try{await api.delete("/api/v1/academic-structure/"+id);setMsg("Academic unit deleted.");load()}catch(e){setErr(e?.response?.data?.detail||"Unable to delete academic unit.")}}
  const labelFor=t=>labels.find(x=>x[0]===t)?.[1]||t;
@@ -22,13 +23,13 @@ export default function AcademicStructure({ui}){
   <div className="setup-grid">
    <section className="panel"><div className="panel-title"><b>Add Academic Unit</b><span>Institution Admin</span></div>
     <div className="setup-form">
-     <label>Unit Type<select value={type} onChange={e=>setType(e.target.value)}>{labels.map(([v,l])=><option value={v} key={v}>{l}</option>)}</select></label>
+     <label>Unit Type<select value={type} onChange={e=>{setType(e.target.value);setParent("")}}>{labels.map(([v,l])=><option value={v} key={v}>{l}</option>)}</select></label>
      <label>Name<input value={name} onChange={e=>setName(e.target.value)} placeholder={"Enter "+labelFor(type)+" name"}/></label>
      <label>Code<input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="Unique academic code"/></label>
-     <label>Parent Unit<select value={parent} onChange={e=>setParent(e.target.value)}><option value="">No parent / top level</option>{parents.map(r=><option value={r.id} key={r.id}>{labelFor(r.unit_type)} — {r.name}</option>)}</select></label>
+     <label>Parent Unit<select value={parent} disabled={!parentType} onChange={e=>setParent(e.target.value)}><option value="">{parentType?"Select "+labelFor(parentType):"Top level — no parent"}</option>{parents.map(r=><option value={r.id} key={r.id}>{labelFor(r.unit_type)} — {r.name}</option>)}</select></label>
     </div>
     {err&&<div className="error">{err}</div>}{msg&&<div className="success-message">{msg}</div>}
-    <button className="primary" disabled={!name.trim()||!code.trim()} onClick={add}>Add Unit</button>
+    <button className="primary" disabled={!name.trim()||!code.trim()||(!!parentType&&!parent)} onClick={add}>Add Unit</button>
    </section>
    <section className="panel"><div className="panel-title"><b>Recommended Hierarchy</b><span>{ui.label}</span></div>
     <div className="structure-flow">{labels.map(([,l],i)=><React.Fragment key={l}><span>{l}</span>{i<labels.length-1&&<b>↓</b>}</React.Fragment>)}</div>

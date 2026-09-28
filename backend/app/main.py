@@ -396,6 +396,9 @@ def class_sessions(user:User=Depends(require_roles("Student","Teacher")),db:Sess
 @app.post("/api/v1/class-sessions")
 def create_class_session(payload:ClassSessionIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     if payload.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(403,"This course or section is not assigned to you")
+    unit=db.get(AcademicUnit,payload.unit_id)
+    if not unit or unit.tenant_id!=user.tenant_id: raise HTTPException(400,"Invalid academic unit")
+    if unit.unit_type not in {"COURSE","SECTION_BATCH"}: raise HTTPException(400,"Class sessions can only be scheduled for a Course or Section / Batch")
     start=_parse_due_at(payload.starts_at); end=_parse_due_at(payload.ends_at)
     if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
     row=ClassSession(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,title=payload.title,starts_at=start,ends_at=end,room=payload.room)

@@ -116,3 +116,10 @@ class FeeLedgerIn(BaseModel):
 class FeePaymentIn(BaseModel):
     amount: float = Field(gt=0)
     reference: str = Field(default="", max_length=100)
+
+
+class UserAdminUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    role: Optional[str] = None
+    campus_id: Optional[int] = Field(default=None, ge=1)
+    is_active: Optional[bool] = None

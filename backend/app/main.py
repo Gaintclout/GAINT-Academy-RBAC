@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -736,6 +736,37 @@ def delete_record(
         raise HTTPException(403,"Outside campus scope")
     audit(db,user,"DELETE",f"{r.module}:{r.id}",r.name)
     db.delete(r); db.commit()
+    return {"ok":True}
+
+@app.get("/api/v1/admin/parent-student-links")
+def admin_parent_student_links(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    links=db.scalars(select(ParentStudentLink).where(ParentStudentLink.tenant_id==user.tenant_id).order_by(ParentStudentLink.id)).all()
+    result=[]
+    for link in links:
+        parent=db.get(User,link.parent_user_id); student=db.get(User,link.student_user_id)
+        if parent and student:
+            result.append({"id":link.id,"parent_user_id":parent.id,"parent_name":parent.name,"parent_email":parent.email,"student_user_id":student.id,"student_name":student.name,"student_email":student.email,"relationship":link.relationship})
+    return result
+
+@app.post("/api/v1/admin/parent-student-links")
+def create_parent_student_link(payload:ParentStudentLinkIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    parent=db.get(User,payload.parent_user_id); student=db.get(User,payload.student_user_id)
+    if not parent or parent.tenant_id!=user.tenant_id or parent.role!="Parent / Guardian" or not parent.is_active:
+        raise HTTPException(400,"Invalid parent or guardian")
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student" or not student.is_active:
+        raise HTTPException(400,"Invalid student")
+    existing=db.scalar(select(ParentStudentLink).where(ParentStudentLink.parent_user_id==parent.id,ParentStudentLink.student_user_id==student.id))
+    if existing: raise HTTPException(409,"This parent and student are already linked")
+    row=ParentStudentLink(parent_user_id=parent.id,student_user_id=student.id,relationship=payload.relationship.strip(),tenant_id=user.tenant_id)
+    db.add(row); db.flush(); audit(db,user,"CREATE","parent_student_link",f"parent={parent.id};student={student.id};relationship={row.relationship}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"parent_user_id":parent.id,"student_user_id":student.id,"relationship":row.relationship}
+
+@app.delete("/api/v1/admin/parent-student-links/{link_id}")
+def delete_parent_student_link(link_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(ParentStudentLink,link_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Parent-student link not found")
+    details=f"parent={row.parent_user_id};student={row.student_user_id};relationship={row.relationship}"
+    db.delete(row); audit(db,user,"DELETE","parent_student_link",details); db.commit()
     return {"ok":True}
 
 @app.get("/api/v1/parents/children")

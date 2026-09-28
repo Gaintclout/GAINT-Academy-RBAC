@@ -705,6 +705,20 @@ def _fee_payload(row:FeeLedger):
     status="PAID" if balance<=0 else ("PARTIAL" if row.amount_paid>0 else "DUE")
     return {"id":row.id,"student_user_id":row.student_user_id,"fee_code":row.fee_code,"title":row.title,"amount_due":row.amount_due,"amount_paid":row.amount_paid,"balance":balance,"due_at":row.due_at,"status":status}
 
+@app.get("/api/v1/finance/students")
+def finance_students(user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Student",User.is_active==True).order_by(User.name)).all()
+    return [{"id":x.id,"name":x.name,"email":x.email} for x in rows]
+
+@app.get("/api/v1/finance/payments")
+def finance_payments(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id).order_by(FeePayment.paid_at.desc())).all()
+    result=[]
+    for x in rows:
+        ledger=db.get(FeeLedger,x.ledger_id); student=db.get(User,x.student_user_id)
+        result.append({"id":x.id,"ledger_id":x.ledger_id,"fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "","student_user_id":x.student_user_id,"student_name":student.name if student else f"Student {x.student_user_id}","amount":x.amount,"reference":x.reference,"receipt_no":x.receipt_no,"paid_at":x.paid_at})
+    return result
+
 @app.get("/api/v1/fee-ledger")
 def fee_ledger(user:User=Depends(current_user),db:Session=Depends(get_db)):
     st=select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)

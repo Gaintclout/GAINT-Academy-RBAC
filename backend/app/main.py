@@ -393,6 +393,18 @@ def delete_grade_rule(rule_id:int,user:User=Depends(require_roles("Institution A
 def _grade_for(db:Session,tenant_id:int,percentage:float):
     return db.scalar(select(GradeRule).where(GradeRule.tenant_id==tenant_id,GradeRule.min_percentage<=percentage,GradeRule.max_percentage>=percentage).order_by(GradeRule.min_percentage.desc()))
 
+@app.get("/api/v1/exams/{work_id}/results")
+def exam_results_register(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    exam=db.get(AcademicWork,work_id)
+    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    student_ids=sorted(_students_for_unit(db,user.tenant_id,exam.unit_id))
+    saved={r.student_user_id:r for r in db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()}
+    rows=[]
+    for sid in student_ids:
+        student=db.get(User,sid); r=saved.get(sid)
+        rows.append({"student_id":sid,"student_name":student.name if student else "Student","marks":r.marks if r else None,"percentage":r.percentage if r else None,"grade":r.grade if r else "","grade_point":r.grade_point if r else None,"result_status":r.result_status if r else "","remarks":r.remarks if r else "","published":bool(r.published) if r else False})
+    return {"exam":{"id":exam.id,"title":exam.title,"max_marks":exam.max_marks,"unit_id":exam.unit_id},"students":rows,"complete":bool(student_ids) and all(sid in saved for sid in student_ids),"published":bool(saved) and all(r.published for r in saved.values())}
+
 @app.put("/api/v1/exams/{work_id}/results")
 def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     exam=db.get(AcademicWork,work_id)
@@ -403,6 +415,7 @@ def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_
     percentage=round(payload.marks*100/exam.max_marks,2); rule=_grade_for(db,user.tenant_id,percentage)
     if not rule: raise HTTPException(409,"No grading rule covers this percentage")
     row=db.scalar(select(ExamResult).where(ExamResult.work_id==work_id,ExamResult.student_user_id==payload.student_user_id))
+    if row and row.published: raise HTTPException(409,"Published results are locked and cannot be edited")
     if not row:
         row=ExamResult(tenant_id=user.tenant_id,work_id=work_id,student_user_id=payload.student_user_id,marks=payload.marks,percentage=percentage,grade=rule.grade,grade_point=rule.grade_point,result_status=rule.result_status,remarks=payload.remarks)
         db.add(row)
@@ -415,8 +428,12 @@ def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_
 def publish_exam_results(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     exam=db.get(AcademicWork,work_id)
     if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    student_ids=_students_for_unit(db,user.tenant_id,exam.unit_id)
+    if not student_ids: raise HTTPException(409,"No enrolled students for this exam")
     rows=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()
-    if not rows: raise HTTPException(409,"No exam results have been entered")
+    entered={r.student_user_id for r in rows}
+    missing=student_ids-entered
+    if missing: raise HTTPException(409,f"Enter results for all enrolled students before publishing. Missing: {len(missing)}")
     for r in rows: r.published=True
     audit(db,user,"PUBLISH","exam_results",f"exam={work_id}:count={len(rows)}"); db.commit(); return {"ok":True,"published":len(rows)}
 
@@ -429,7 +446,8 @@ def my_results(user:User=Depends(require_roles("Student")),db:Session=Depends(ge
         if exam and unit:
             result.append({"exam_id":exam.id,"exam":exam.title,"course":unit.name,"marks":r.marks,"max_marks":exam.max_marks,"percentage":r.percentage,"grade":r.grade,"grade_point":r.grade_point,"result_status":r.result_status,"remarks":r.remarks})
             if r.grade_point is not None: points.append(r.grade_point)
-    return {"results":result,"gpa":round(sum(points)/len(points),2) if points else None}
+    average=round(sum(points)/len(points),2) if points else None
+    return {"results":result,"average_grade_point":average,"gpa":average}
 
 @app.get("/api/v1/records")
 def records(

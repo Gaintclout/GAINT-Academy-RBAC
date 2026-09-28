@@ -450,16 +450,38 @@ def mark_attendance(session_id:int,payload:AttendanceMarkIn,user:User=Depends(re
 
 @app.get("/api/v1/my-attendance")
 def my_attendance(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
-    sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(_assigned_unit_ids(db,user))).order_by(ClassSession.starts_at.desc())).all()
-    rows=[]; attended=0; counted=0
+    assigned=_assigned_unit_ids(db,user)
+    # Include sessions created at a parent course when the student is assigned
+    # to one of that course's child sections/batches.
+    visible_units=set(assigned)
+    for unit_id in list(assigned):
+        unit=db.get(AcademicUnit,unit_id)
+        seen=set()
+        while unit and unit.parent_id and unit.parent_id not in seen:
+            seen.add(unit.parent_id)
+            parent=db.get(AcademicUnit,unit.parent_id)
+            if not parent or parent.tenant_id!=user.tenant_id: break
+            if parent.unit_type=="COURSE": visible_units.add(parent.id)
+            unit=parent
+    if not visible_units:
+        return {"percentage":None,"attended":0,"absent":0,"late":0,"excused":0,"marked_sessions":0,"counted_sessions":0,"sessions":[]}
+    sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(visible_units)).order_by(ClassSession.starts_at.desc())).all()
+    rows=[]; attended=0; absent=0; late=0; excused=0; marked=0; counted=0
     for session in sessions:
+        if user.id not in _students_for_unit(db,user.tenant_id,session.unit_id): continue
         entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==user.id))
         status=entry.status if entry else "UNMARKED"
         if status!="UNMARKED":
-            counted+=1
-            if status in {"PRESENT","LATE","EXCUSED"}: attended+=1
+            marked+=1
+            if status=="EXCUSED":
+                excused+=1
+            else:
+                counted+=1
+                if status=="PRESENT": attended+=1
+                elif status=="LATE": attended+=1; late+=1
+                elif status=="ABSENT": absent+=1
         rows.append({"session_id":session.id,"title":session.title,"starts_at":session.starts_at,"room":session.room,"status":status})
-    return {"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"marked_sessions":counted,"sessions":rows}
+    return {"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"absent":absent,"late":late,"excused":excused,"marked_sessions":marked,"counted_sessions":counted,"sessions":rows}
 
 @app.get("/api/v1/grade-rules")
 def grade_rules(user:User=Depends(current_user),db:Session=Depends(get_db)):

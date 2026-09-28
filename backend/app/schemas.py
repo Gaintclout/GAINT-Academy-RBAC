@@ -104,3 +104,15 @@ class ExamResultIn(BaseModel):
     student_user_id: int
     marks: float = Field(ge=0)
     remarks: str = ""
+
+
+class FeeLedgerIn(BaseModel):
+    student_user_id: int
+    fee_code: str = Field(min_length=1, max_length=60)
+    title: str = Field(min_length=2, max_length=180)
+    amount_due: float = Field(gt=0)
+    due_at: Optional[str] = None
+
+class FeePaymentIn(BaseModel):
+    amount: float = Field(gt=0)
+    reference: str = Field(default="", max_length=100)

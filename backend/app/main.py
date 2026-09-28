@@ -340,6 +340,9 @@ def create_work(payload:AcademicWorkIn,user:User=Depends(require_roles("Teacher"
     kind=payload.work_type.strip().upper()
     if kind not in {"HOMEWORK","ASSIGNMENT","EXAM"}: raise HTTPException(400,"Unsupported academic work type")
     if payload.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(403,"This course or section is not assigned to you")
+    unit=db.get(AcademicUnit,payload.unit_id)
+    if not unit or unit.tenant_id!=user.tenant_id: raise HTTPException(400,"Invalid academic unit")
+    if unit.unit_type not in {"COURSE","SECTION_BATCH"}: raise HTTPException(400,"Academic work can only be created for a Course or Section / Batch")
     w=AcademicWork(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,work_type=kind,title=payload.title,description=payload.description,max_marks=payload.max_marks,due_at=_parse_due_at(payload.due_at))
     db.add(w); audit(db,user,"CREATE",kind,payload.title); db.commit(); db.refresh(w)
     return {"id":w.id,"title":w.title,"work_type":w.work_type,"status":w.status}

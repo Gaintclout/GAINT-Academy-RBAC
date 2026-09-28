@@ -1,5 +1,6 @@
 from typing import Optional
 import datetime as dt
+from decimal import Decimal
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, desc
@@ -778,11 +779,12 @@ def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(requ
     balance=max(0,row.amount_due-row.amount_paid)
     reference=payload.reference.strip()
     if reference and db.scalar(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id,FeePayment.reference==reference)): raise HTTPException(409,"This payment reference has already been recorded")
-    if payload.amount>balance: raise HTTPException(400,"Payment cannot exceed outstanding balance")
+    payment_amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
+    if payment_amount>balance: raise HTTPException(400,"Payment cannot exceed outstanding balance")
     receipt=f"GAINT-{user.tenant_id}-{dt.datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{ledger_id}"
-    payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payload.amount,reference=reference,receipt_no=receipt,recorded_by=user.id)
-    row.amount_paid+=payload.amount; row.status="PAID" if row.amount_paid>=row.amount_due else "PARTIAL"
-    db.add(payment); audit(db,user,"PAYMENT","fee_ledger",f"student={row.student_user_id};receipt={receipt};amount={payload.amount}"); db.commit()
+    payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payment_amount,reference=reference,receipt_no=receipt,recorded_by=user.id)
+    row.amount_paid+=payment_amount; row.status="PAID" if row.amount_paid>=row.amount_due else "PARTIAL"
+    db.add(payment); audit(db,user,"PAYMENT","fee_ledger",f"student={row.student_user_id};receipt={receipt};amount={payment_amount}"); db.commit()
     return {"ok":True,"receipt_no":receipt,"ledger":_fee_payload(row)}
 
 @app.get("/api/v1/fee-ledger/{ledger_id}/receipts")

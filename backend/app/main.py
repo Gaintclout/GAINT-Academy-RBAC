@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
 from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
@@ -183,6 +183,17 @@ def admission_students(user:User=Depends(require_roles("Institution Admin")),db:
         result.append({"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","assignments":details})
     return result
 
+@app.get("/api/v1/admissions/students/{student_id}/history")
+def admission_history(student_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    rows=db.scalars(select(EnrollmentHistory).where(EnrollmentHistory.tenant_id==user.tenant_id,EnrollmentHistory.student_user_id==student.id).order_by(EnrollmentHistory.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        before=db.get(AcademicUnit,row.from_unit_id) if row.from_unit_id else None; after=db.get(AcademicUnit,row.to_unit_id) if row.to_unit_id else None; actor=db.get(User,row.actor_user_id)
+        result.append({"id":row.id,"event_type":row.event_type,"from_unit":before.name if before else None,"to_unit":after.name if after else None,"details":row.details,"actor":actor.name if actor else "Unknown","created_at":row.created_at})
+    return result
+
 @app.patch("/api/v1/admissions/students/{student_id}")
 def update_admission(student_id:int,payload:StudentEnrollmentUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     student=db.get(User,student_id)
@@ -192,14 +203,15 @@ def update_admission(student_id:int,payload:StudentEnrollmentUpdate,user:User=De
         section=db.get(AcademicUnit,data["section_unit_id"])
         if not section or section.tenant_id!=user.tenant_id or section.unit_type!="SECTION_BATCH": raise HTTPException(400,"Invalid section or batch")
         old=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.assignment_type=="SECTION_ASSIGNMENT")).all()
+        previous_unit_id=old[0].unit_id if old else None
         for row in old: db.delete(row)
         db.add(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=section.id,assignment_type="SECTION_ASSIGNMENT",status="Active"))
+        db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="SECTION_TRANSFER",from_unit_id=previous_unit_id,to_unit_id=section.id,details="",actor_user_id=user.id))
         audit(db,user,"UPDATE","student_enrollment",f"student={student.id};section={section.id}")
     if "status" in data:
         status=(data["status"] or "").strip().upper()
         if status not in {"ACTIVE","WITHDRAWN"}: raise HTTPException(400,"Status must be Active or Withdrawn")
-        student.is_active=status=="ACTIVE"
-        audit(db,user,"UPDATE","student_enrollment",f"student={student.id};status={status}")
+        previous="ACTIVE" if student.is_active else "WITHDRAWN"\n        student.is_active=status=="ACTIVE"\n        if previous!=status: db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="REACTIVATED" if status=="ACTIVE" else "WITHDRAWN",details=f"from={previous};to={status}",actor_user_id=user.id))\n        audit(db,user,"UPDATE","student_enrollment",f"student={student.id};status={status}")
     db.commit()
     return {"ok":True,"student_id":student.id,"status":"Active" if student.is_active else "Withdrawn"}
 
@@ -232,7 +244,7 @@ def enroll_student(payload:StudentEnrollmentIn,user:User=Depends(require_roles("
     assignments.extend(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=x.id,assignment_type="COURSE_REGISTRATION",status="Active") for x in courses)
     db.add_all(assignments)
     if parent: db.add(ParentStudentLink(parent_user_id=parent.id,student_user_id=student.id,relationship=payload.relationship.strip(),tenant_id=user.tenant_id))
-    audit(db,user,"CREATE","student_enrollment",f"student={student.id};program={program.id};section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}")
+    db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="ENROLLED",to_unit_id=program.id,details=f"section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}",actor_user_id=user.id))\n    audit(db,user,"CREATE","student_enrollment",f"student={student.id};program={program.id};section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}")
     db.commit(); db.refresh(student)
     return {"id":student.id,"name":student.name,"email":student.email,"program":program.name,"section":section.name if section else None,"courses":[x.name for x in courses],"parent_linked":bool(parent)}
 

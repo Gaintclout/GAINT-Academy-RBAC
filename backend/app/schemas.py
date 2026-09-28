@@ -131,3 +131,9 @@ class UserAdminCreate(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     role: str
     campus_id: int = Field(default=1, ge=1)
+
+
+class ParentStudentLinkIn(BaseModel):
+    parent_user_id: int
+    student_user_id: int
+    relationship: str = Field(default="Guardian", min_length=2, max_length=40)

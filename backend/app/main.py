@@ -123,11 +123,35 @@ def create_academic_unit(payload: AcademicUnitIn, user: User = Depends(require_r
     unit_type=payload.unit_type.strip().upper()
     if unit_type not in allowed:
         raise HTTPException(400,"Unsupported academic unit type")
+    hierarchy={
+        "CAMPUS":set(),
+        "SCHOOL_FACULTY":{"CAMPUS"},
+        "DEPARTMENT":{"SCHOOL_FACULTY"},
+        "PROGRAM":{"DEPARTMENT"},
+        "ACADEMIC_PERIOD":{"PROGRAM"},
+        "COURSE":{"ACADEMIC_PERIOD"},
+        "SECTION_BATCH":{"COURSE"},
+    }
+    parent=None
     if payload.parent_id is not None:
         parent=db.get(AcademicUnit,payload.parent_id)
         if not parent or parent.tenant_id != user.tenant_id:
             raise HTTPException(400,"Invalid parent academic unit")
-    row=AcademicUnit(tenant_id=user.tenant_id,campus_id=payload.campus_id,unit_type=unit_type,name=payload.name.strip(),code=payload.code.strip().upper(),parent_id=payload.parent_id,status=payload.status)
+    expected=hierarchy[unit_type]
+    if not expected and parent is not None:
+        raise HTTPException(400,f"{unit_type} must be a top-level academic unit")
+    if expected and parent is None:
+        raise HTTPException(400,f"{unit_type} requires a parent academic unit")
+    if parent is not None and parent.unit_type not in expected:
+        allowed=", ".join(sorted(expected))
+        raise HTTPException(400,f"{unit_type} must be created under: {allowed}")
+    code=payload.code.strip().upper()
+    duplicate=db.scalar(select(AcademicUnit).where(
+        AcademicUnit.tenant_id==user.tenant_id,
+        AcademicUnit.code==code,
+    ))
+    if duplicate: raise HTTPException(409,"Academic unit code already exists in this institution")
+    row=AcademicUnit(tenant_id=user.tenant_id,campus_id=payload.campus_id,unit_type=unit_type,name=payload.name.strip(),code=code,parent_id=payload.parent_id,status=payload.status)
     db.add(row); audit(db,user,"CREATE","academic_structure",f"{unit_type}:{row.name}"); db.commit(); db.refresh(row)
     return {"id":row.id,"unit_type":row.unit_type,"name":row.name,"code":row.code,"parent_id":row.parent_id,"campus_id":row.campus_id,"status":row.status}
 

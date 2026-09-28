@@ -14,9 +14,12 @@ from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
 
-Base.metadata.create_all(bind=engine)
-with SessionLocal() as db:
-    seed(db)
+settings.validate_runtime()
+if settings.AUTO_CREATE_SCHEMA:
+    Base.metadata.create_all(bind=engine)
+if settings.SEED_DEMO_DATA:
+    with SessionLocal() as db:
+        seed(db)
 
 app = FastAPI(
     title="GAINT Academy API",
@@ -57,6 +60,8 @@ def health():
 
 @app.get("/api/v1/demo-accounts")
 def demo_accounts():
+    if not settings.SEED_DEMO_DATA:
+        raise HTTPException(404, "Demo accounts are disabled")
     return {
         "password": DEMO_PASSWORD,
         "accounts":[{"email":e,"name":n,"role":r} for e,n,r in DEMO_USERS],

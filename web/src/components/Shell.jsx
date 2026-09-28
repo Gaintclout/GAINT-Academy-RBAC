@@ -10,6 +10,7 @@ import Audit from "./Audit";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
+import AccountsFinance from "./AccountsFinance";
 import StudentAcademicModule from "./StudentAcademicModule";
 import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import AdaptiveRoleModule from "./AdaptiveRoleModule";
@@ -69,6 +70,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AcademicAssignments ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Grading Scheme") {
     content = <GradeRules ui={ui} />;
+  } else if (user.role === "Accounts" && ["Fees","Payments","Receipts"].includes(active)) {
+    content = <AccountsFinance title={active} ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {
     content = <StudentFinance ui={ui} />;
   } else if (user.role === "Student" && active === "Results") {

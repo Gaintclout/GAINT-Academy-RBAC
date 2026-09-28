@@ -259,6 +259,28 @@ def my_academics(user:User=Depends(require_roles("Student","Teacher")),db:Sessio
         if unit: result.append({"assignment_id":a.id,"assignment_type":a.assignment_type,"unit_id":unit.id,"unit_type":unit.unit_type,"name":unit.name,"code":unit.code,"status":a.status})
     return result
 
+@app.get("/api/v1/teacher-roster")
+def teacher_roster(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    assignments=db.scalars(select(AcademicAssignment).where(
+        AcademicAssignment.tenant_id==user.tenant_id,
+        AcademicAssignment.user_id==user.id,
+        AcademicAssignment.status=="Active",
+        AcademicAssignment.assignment_type.in_(["FACULTY_ASSIGNMENT","ADVISOR_ASSIGNMENT"]),
+    ).order_by(AcademicAssignment.id)).all()
+    classes=[]; student_map={}
+    for assignment in assignments:
+        unit=db.get(AcademicUnit,assignment.unit_id)
+        if not unit or unit.unit_type not in {"COURSE","SECTION_BATCH"}: continue
+        student_ids=sorted(_students_for_unit(db,user.tenant_id,unit.id))
+        classes.append({"assignment_id":assignment.id,"assignment_type":assignment.assignment_type,"unit_id":unit.id,"unit_type":unit.unit_type,"name":unit.name,"code":unit.code,"student_count":len(student_ids)})
+        for sid in student_ids:
+            student=db.get(User,sid)
+            if not student or student.role!="Student" or not student.is_active: continue
+            item=student_map.setdefault(sid,{"student_user_id":sid,"student_name":student.name,"classes":[]})
+            item["classes"].append({"unit_id":unit.id,"name":unit.name,"code":unit.code,"unit_type":unit.unit_type})
+    students=sorted(student_map.values(),key=lambda x:x["student_name"].lower())
+    return {"classes":classes,"students":students}
+
 @app.get("/api/v1/academic-activities")
 def academic_activities(module:str,user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):
     if not can(user.role,module,"view"): raise HTTPException(403,"This academic module is not available for your role")

@@ -137,3 +137,15 @@ class ParentStudentLinkIn(BaseModel):
     parent_user_id: int
     student_user_id: int
     relationship: str = Field(default="Guardian", min_length=2, max_length=40)
+
+
+class StudentEnrollmentIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=180)
+    password: str = Field(min_length=8, max_length=128)
+    campus_id: int = Field(default=1, ge=1)
+    program_unit_id: int
+    section_unit_id: Optional[int] = None
+    course_unit_ids: list[int] = Field(default_factory=list)
+    parent_user_id: Optional[int] = None
+    relationship: str = Field(default="Guardian", min_length=2, max_length=40)

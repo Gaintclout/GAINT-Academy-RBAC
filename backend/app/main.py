@@ -246,9 +246,37 @@ def _parse_due_at(value):
     try: return dt.datetime.fromisoformat(value.replace("Z","+00:00")).replace(tzinfo=None)
     except ValueError: raise HTTPException(400,"Invalid due date")
 
+def _descendant_unit_ids(db:Session,tenant_id:int,unit_id:int):
+    """Return a unit and all of its descendants inside the same institution."""
+    result={unit_id}; frontier=[unit_id]
+    while frontier:
+        children=set(db.scalars(select(AcademicUnit.id).where(
+            AcademicUnit.tenant_id==tenant_id,
+            AcademicUnit.parent_id.in_(frontier),
+        )).all())
+        children-=result
+        if not children: break
+        result.update(children); frontier=list(children)
+    return result
+
 def _students_for_unit(db:Session,tenant_id:int,unit_id:int):
-    ids=db.scalars(select(AcademicAssignment.user_id).where(AcademicAssignment.tenant_id==tenant_id,AcademicAssignment.unit_id==unit_id,AcademicAssignment.status=="Active",AcademicAssignment.assignment_type.in_(["COURSE_REGISTRATION","SECTION_ASSIGNMENT","ENROLLMENT"]))).all()
-    return set(ids)
+    # A course-level activity also applies to students enrolled in child
+    # sections/batches. Section-level activities remain scoped to that section.
+    scoped_units=_descendant_unit_ids(db,tenant_id,unit_id)
+    ids=db.scalars(select(AcademicAssignment.user_id).where(
+        AcademicAssignment.tenant_id==tenant_id,
+        AcademicAssignment.unit_id.in_(scoped_units),
+        AcademicAssignment.status=="Active",
+        AcademicAssignment.assignment_type.in_(["COURSE_REGISTRATION","SECTION_ASSIGNMENT","ENROLLMENT"]),
+    )).all()
+    if not ids: return set()
+    students=db.scalars(select(User.id).where(
+        User.tenant_id==tenant_id,
+        User.id.in_(set(ids)),
+        User.role=="Student",
+        User.is_active==True,
+    )).all()
+    return set(students)
 
 @app.get("/api/v1/academic-work")
 def list_academic_work(work_type:Optional[str]=None,user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):

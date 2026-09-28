@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -700,22 +700,57 @@ def parent_children(
             })
     return result
 
+def _fee_payload(row:FeeLedger):
+    balance=max(0.0,row.amount_due-row.amount_paid)
+    status="PAID" if balance<=0 else ("PARTIAL" if row.amount_paid>0 else "DUE")
+    return {"id":row.id,"student_user_id":row.student_user_id,"fee_code":row.fee_code,"title":row.title,"amount_due":row.amount_due,"amount_paid":row.amount_paid,"balance":balance,"due_at":row.due_at,"status":status}
+
+@app.get("/api/v1/fee-ledger")
+def fee_ledger(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    st=select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)
+    if user.role=="Student": st=st.where(FeeLedger.student_user_id==user.id)
+    elif user.role not in {"Accounts","Institution Admin","Auditor"}: raise HTTPException(403,"Fee ledger is not available for your role")
+    return [_fee_payload(x) for x in db.scalars(st.order_by(FeeLedger.id.desc())).all()]
+
+@app.post("/api/v1/fee-ledger")
+def create_fee_ledger(payload:FeeLedgerIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,payload.student_user_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student" or not student.is_active: raise HTTPException(400,"Invalid student")
+    code=payload.fee_code.strip().upper()
+    if db.scalar(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id,FeeLedger.student_user_id==student.id,FeeLedger.fee_code==code)): raise HTTPException(409,"This fee is already assigned to the student")
+    due=_parse_due(payload.due_at)
+    row=FeeLedger(tenant_id=user.tenant_id,student_user_id=student.id,fee_code=code,title=payload.title.strip(),amount_due=payload.amount_due,amount_paid=0,due_at=due,status="DUE")
+    db.add(row); db.flush(); audit(db,user,"CREATE","fee_ledger",f"student={student.id};fee={code};amount={payload.amount_due}"); db.commit(); db.refresh(row)
+    return _fee_payload(row)
+
+@app.post("/api/v1/fee-ledger/{ledger_id}/payments")
+def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(FeeLedger,ledger_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    balance=max(0.0,row.amount_due-row.amount_paid)
+    if payload.amount>balance: raise HTTPException(400,"Payment cannot exceed outstanding balance")
+    receipt=f"GAINT-{user.tenant_id}-{ledger_id}-{int(dt.datetime.utcnow().timestamp())}"
+    payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payload.amount,reference=payload.reference.strip(),receipt_no=receipt,recorded_by=user.id)
+    row.amount_paid+=payload.amount; row.status="PAID" if row.amount_paid>=row.amount_due else "PARTIAL"
+    db.add(payment); audit(db,user,"PAYMENT","fee_ledger",f"student={row.student_user_id};receipt={receipt};amount={payload.amount}"); db.commit()
+    return {"ok":True,"receipt_no":receipt,"ledger":_fee_payload(row)}
+
+@app.get("/api/v1/fee-ledger/{ledger_id}/receipts")
+def fee_receipts(ledger_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    row=db.get(FeeLedger,ledger_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    allowed=user.role in {"Accounts","Institution Admin","Auditor"} or (user.role=="Student" and row.student_user_id==user.id)
+    if user.role=="Parent / Guardian":
+        allowed=db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.parent_user_id==user.id,ParentStudentLink.student_user_id==row.student_user_id,ParentStudentLink.tenant_id==user.tenant_id)) is not None
+    if not allowed: raise HTTPException(403,"You cannot view these receipts")
+    rows=db.scalars(select(FeePayment).where(FeePayment.ledger_id==ledger_id,FeePayment.tenant_id==user.tenant_id).order_by(FeePayment.paid_at.desc())).all()
+    return [{"id":x.id,"amount":x.amount,"reference":x.reference,"receipt_no":x.receipt_no,"paid_at":x.paid_at} for x in rows]
+
 @app.get("/api/v1/parents/children/{student_id}/fees")
 def parent_child_fees(student_id:int,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
     student=_linked_child(db,user,student_id)
-    # Finance currently uses the generic Record store. Restrict records to this
-    # child only when the student identity is explicitly encoded in the record.
-    tokens={f"STUDENT:{student.id}",student.email.lower()}
-    rows=db.scalars(select(Record).where(
-        Record.tenant_id==user.tenant_id,
-        Record.module.in_(["Fees","Payments","Receipts"]),
-    ).order_by(Record.id.desc())).all()
-    items=[]
-    for row in rows:
-        haystack=f"{row.code} {row.notes}".lower()
-        if not any(token.lower() in haystack for token in tokens): continue
-        items.append({"id":row.id,"module":row.module,"name":row.name,"code":row.code,"category":row.category,"status":row.status,"notes":row.notes,"created_at":row.created_at})
-    return {"student":{"id":student.id,"name":student.name,"email":student.email},"records":items,"payment_ready":False,"message":"Student-linked fee records are shown. A dedicated fee ledger is required before enabling production payments."}
+    rows=db.scalars(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id,FeeLedger.student_user_id==student.id).order_by(FeeLedger.id.desc())).all()
+    return {"student":{"id":student.id,"name":student.name,"email":student.email},"records":[_fee_payload(x) for x in rows],"payment_ready":False,"message":"Fee ledger is live. Online gateway payment remains disabled until a production payment provider is configured."}
 
 def _linked_child(db:Session,parent:User,student_id:int):
     link=db.scalar(select(ParentStudentLink).where(

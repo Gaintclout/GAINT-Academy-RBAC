@@ -203,6 +203,7 @@ def admin_manage_student_guardian(student_id:int,payload:StudentGuardianManageme
     if not parent or parent.tenant_id!=user.tenant_id or parent.role!="Parent / Guardian" or not parent.is_active: raise HTTPException(400,"Invalid parent or guardian")
     old=db.scalars(select(ParentStudentLink).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id)).all()
     for row in old: db.delete(row)
+    db.flush()
     db.add(ParentStudentLink(parent_user_id=parent.id,student_user_id=student.id,relationship=payload.relationship.strip(),tenant_id=user.tenant_id))
     db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="GUARDIAN_UPDATED",details=f"parent={parent.id};relationship={payload.relationship.strip()}",actor_user_id=user.id))
     audit(db,user,"UPDATE","student_guardian",f"student={student.id};parent={parent.id}")

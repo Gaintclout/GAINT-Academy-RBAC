@@ -775,7 +775,7 @@ def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(requ
     row=db.get(FeeLedger,ledger_id)
     if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
     if row.status=="CANCELLED": raise HTTPException(409,"Cancelled fees cannot receive payments")
-    balance=max(0.0,row.amount_due-row.amount_paid)
+    balance=max(0,row.amount_due-row.amount_paid)
     reference=payload.reference.strip()
     if reference and db.scalar(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id,FeePayment.reference==reference)): raise HTTPException(409,"This payment reference has already been recorded")
     if payload.amount>balance: raise HTTPException(400,"Payment cannot exceed outstanding balance")

@@ -3,7 +3,7 @@ import datetime as dt
 from decimal import Decimal
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.orm import Session
 
 from .config import settings

@@ -145,9 +145,16 @@ def test_non_admin_cannot_manage_parent_student_links():
 def test_admissions_lifecycle_and_history():
     admin=_login("admin@gaintacademy.com")
     units=client.get("/api/v1/academic-structure",headers=admin).json()
-    program=next(x for x in units if x["unit_type"] in {"PROGRAM","ACADEMIC_PERIOD"})
+    program=next((x for x in units if x["unit_type"] in {"PROGRAM","ACADEMIC_PERIOD"}),None)
+    if not program:
+        made=client.post("/api/v1/academic-structure",headers=admin,json={"unit_type":"PROGRAM","name":"CI Test Program","code":"CI-PROG","campus_id":1,"status":"Active"})
+        assert made.status_code==200, made.text
+        program=made.json()
     sections=[x for x in units if x["unit_type"]=="SECTION_BATCH"]
-    assert sections
+    if not sections:
+        made=client.post("/api/v1/academic-structure",headers=admin,json={"unit_type":"SECTION_BATCH","name":"CI Test Section","code":"CI-SEC","parent_id":program["id"],"campus_id":1,"status":"Active"})
+        assert made.status_code==200, made.text
+        sections=[made.json()]
     email="admission.lifecycle@test.local"
     users=client.get("/api/v1/users",headers=admin).json()
     existing=next((x for x in users if x["email"]==email),None)

@@ -702,7 +702,7 @@ def parent_children(
 
 def _fee_payload(row:FeeLedger):
     balance=max(0.0,row.amount_due-row.amount_paid)
-    status="PAID" if balance<=0 else ("PARTIAL" if row.amount_paid>0 else "DUE")
+    status="CANCELLED" if row.status=="CANCELLED" else ("PAID" if balance<=0 else ("PARTIAL" if row.amount_paid>0 else "DUE"))
     return {"id":row.id,"student_user_id":row.student_user_id,"fee_code":row.fee_code,"title":row.title,"amount_due":row.amount_due,"amount_paid":row.amount_paid,"balance":balance,"due_at":row.due_at,"status":status}
 
 @app.get("/api/v1/finance/students")

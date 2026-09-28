@@ -245,3 +245,29 @@ def test_student_academic_management_validates_unit_type():
     if non_section:
         r=client.put(f"/api/v1/admin/students/{student['id']}/academics",headers=admin,json={"section_unit_id":non_section["id"]})
         assert r.status_code==400
+
+
+def test_teacher_assignment_management_rbac_and_validation():
+    admin=_login("admin@gaintacademy.com")
+    student_headers=_login("student@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    teacher=next(x for x in users if x["role"]=="Teacher")
+    units=client.get("/api/v1/academic-structure",headers=admin).json()
+    course=next((x for x in units if x["unit_type"]=="COURSE"),None)
+    section=next((x for x in units if x["unit_type"]=="SECTION_BATCH"),None)
+    program=next((x for x in units if x["unit_type"]=="PROGRAM"),None)
+    if course:
+        blocked=client.post("/api/v1/academic-assignments",headers=student_headers,json={"user_id":teacher["id"],"unit_id":course["id"],"assignment_type":"FACULTY_ASSIGNMENT","status":"Active"})
+        assert blocked.status_code==403
+        made=client.post("/api/v1/academic-assignments",headers=admin,json={"user_id":teacher["id"],"unit_id":course["id"],"assignment_type":"FACULTY_ASSIGNMENT","status":"Active"})
+        assert made.status_code in (200,409), made.text
+    if section:
+        made=client.post("/api/v1/academic-assignments",headers=admin,json={"user_id":teacher["id"],"unit_id":section["id"],"assignment_type":"FACULTY_ASSIGNMENT","status":"Active"})
+        assert made.status_code in (200,409), made.text
+    if program:
+        advisor=client.post("/api/v1/academic-assignments",headers=admin,json={"user_id":teacher["id"],"unit_id":program["id"],"assignment_type":"ADVISOR_ASSIGNMENT","status":"Active"})
+        assert advisor.status_code in (200,409), advisor.text
+    student=next(x for x in users if x["role"]=="Student")
+    if course:
+        invalid=client.post("/api/v1/academic-assignments",headers=admin,json={"user_id":student["id"],"unit_id":course["id"],"assignment_type":"FACULTY_ASSIGNMENT","status":"Active"})
+        assert invalid.status_code==400

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -169,6 +169,39 @@ def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institutio
     if child: raise HTTPException(409,"Remove child units before deleting this item")
     audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
     return {"ok":True}
+
+@app.get("/api/v1/admissions/students")
+def admission_students(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Student").order_by(User.name)).all()
+    result=[]
+    for student in students:
+        assignments=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.status=="Active")).all()
+        details=[]
+        for a in assignments:
+            unit=db.get(AcademicUnit,a.unit_id)
+            if unit: details.append({"id":a.id,"assignment_type":a.assignment_type,"unit_id":unit.id,"unit_name":unit.name,"unit_type":unit.unit_type})
+        result.append({"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","assignments":details})
+    return result
+
+@app.patch("/api/v1/admissions/students/{student_id}")
+def update_admission(student_id:int,payload:StudentEnrollmentUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    data=payload.model_dump(exclude_unset=True)
+    if "section_unit_id" in data and data["section_unit_id"] is not None:
+        section=db.get(AcademicUnit,data["section_unit_id"])
+        if not section or section.tenant_id!=user.tenant_id or section.unit_type!="SECTION_BATCH": raise HTTPException(400,"Invalid section or batch")
+        old=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.assignment_type=="SECTION_ASSIGNMENT")).all()
+        for row in old: db.delete(row)
+        db.add(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=section.id,assignment_type="SECTION_ASSIGNMENT",status="Active"))
+        audit(db,user,"UPDATE","student_enrollment",f"student={student.id};section={section.id}")
+    if "status" in data:
+        status=(data["status"] or "").strip().upper()
+        if status not in {"ACTIVE","WITHDRAWN"}: raise HTTPException(400,"Status must be Active or Withdrawn")
+        student.is_active=status=="ACTIVE"
+        audit(db,user,"UPDATE","student_enrollment",f"student={student.id};status={status}")
+    db.commit()
+    return {"ok":True,"student_id":student.id,"status":"Active" if student.is_active else "Withdrawn"}
 
 @app.post("/api/v1/admissions/enroll-student")
 def enroll_student(payload:StudentEnrollmentIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

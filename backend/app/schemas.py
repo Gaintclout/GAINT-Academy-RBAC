@@ -161,3 +161,12 @@ class StudentAdminUpdate(BaseModel):
     email: Optional[str] = Field(default=None, min_length=5, max_length=180)
     campus_id: Optional[int] = Field(default=None, ge=1)
     is_active: Optional[bool] = None
+
+
+class StudentAcademicManagementIn(BaseModel):
+    section_unit_id: Optional[int] = None
+    course_unit_ids: Optional[list[int]] = None
+
+class StudentGuardianManagementIn(BaseModel):
+    parent_user_id: int
+    relationship: str = Field(default="Guardian", min_length=2, max_length=40)

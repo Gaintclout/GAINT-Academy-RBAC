@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -169,6 +169,39 @@ def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institutio
     if child: raise HTTPException(409,"Remove child units before deleting this item")
     audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
     return {"ok":True}
+
+@app.post("/api/v1/admissions/enroll-student")
+def enroll_student(payload:StudentEnrollmentIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    email=payload.email.strip().lower()
+    if db.scalar(select(User).where(User.email==email)): raise HTTPException(409,"Email address is already registered")
+    password=payload.password
+    if not (any(x.isalpha() for x in password) and any(x.isdigit() for x in password) and any(not x.isalnum() for x in password)):
+        raise HTTPException(400,"Password must contain a letter, number and special character")
+    program=db.get(AcademicUnit,payload.program_unit_id)
+    if not program or program.tenant_id!=user.tenant_id or program.unit_type not in {"PROGRAM","ACADEMIC_PERIOD"}: raise HTTPException(400,"Invalid program or academic period")
+    section=None
+    if payload.section_unit_id is not None:
+        section=db.get(AcademicUnit,payload.section_unit_id)
+        if not section or section.tenant_id!=user.tenant_id or section.unit_type!="SECTION_BATCH": raise HTTPException(400,"Invalid section or batch")
+    courses=[]
+    for unit_id in dict.fromkeys(payload.course_unit_ids):
+        unit=db.get(AcademicUnit,unit_id)
+        if not unit or unit.tenant_id!=user.tenant_id or unit.unit_type!="COURSE": raise HTTPException(400,"Invalid course")
+        courses.append(unit)
+    parent=None
+    if payload.parent_user_id is not None:
+        parent=db.get(User,payload.parent_user_id)
+        if not parent or parent.tenant_id!=user.tenant_id or parent.role!="Parent / Guardian" or not parent.is_active: raise HTTPException(400,"Invalid parent or guardian")
+    student=User(email=email,name=payload.name.strip(),role="Student",password_hash=hash_password(password),tenant_id=user.tenant_id,campus_id=payload.campus_id,is_active=True)
+    db.add(student); db.flush()
+    assignments=[AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=program.id,assignment_type="ENROLLMENT",status="Active")]
+    if section: assignments.append(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=section.id,assignment_type="SECTION_ASSIGNMENT",status="Active"))
+    assignments.extend(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=x.id,assignment_type="COURSE_REGISTRATION",status="Active") for x in courses)
+    db.add_all(assignments)
+    if parent: db.add(ParentStudentLink(parent_user_id=parent.id,student_user_id=student.id,relationship=payload.relationship.strip(),tenant_id=user.tenant_id))
+    audit(db,user,"CREATE","student_enrollment",f"student={student.id};program={program.id};section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}")
+    db.commit(); db.refresh(student)
+    return {"id":student.id,"name":student.name,"email":student.email,"program":program.name,"section":section.name if section else None,"courses":[x.name for x in courses],"parent_linked":bool(parent)}
 
 @app.get("/api/v1/academic-assignments")
 def academic_assignments(user:User=Depends(current_user),db:Session=Depends(get_db)):

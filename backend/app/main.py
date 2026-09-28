@@ -248,7 +248,8 @@ def enroll_student(payload:StudentEnrollmentIn,user:User=Depends(require_roles("
     assignments.extend(AcademicAssignment(tenant_id=user.tenant_id,user_id=student.id,unit_id=x.id,assignment_type="COURSE_REGISTRATION",status="Active") for x in courses)
     db.add_all(assignments)
     if parent: db.add(ParentStudentLink(parent_user_id=parent.id,student_user_id=student.id,relationship=payload.relationship.strip(),tenant_id=user.tenant_id))
-    db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="ENROLLED",to_unit_id=program.id,details=f"section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}",actor_user_id=user.id))\n    audit(db,user,"CREATE","student_enrollment",f"student={student.id};program={program.id};section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}")
+    db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="ENROLLED",to_unit_id=program.id,details=f"section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}",actor_user_id=user.id))
+    audit(db,user,"CREATE","student_enrollment",f"student={student.id};program={program.id};section={section.id if section else ''};courses={len(courses)};parent={parent.id if parent else ''}")
     db.commit(); db.refresh(student)
     return {"id":student.id,"name":student.name,"email":student.email,"program":program.name,"section":section.name if section else None,"courses":[x.name for x in courses],"parent_linked":bool(parent)}
 

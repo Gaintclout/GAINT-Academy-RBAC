@@ -183,6 +183,24 @@ def admission_students(user:User=Depends(require_roles("Institution Admin")),db:
         result.append({"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","assignments":details})
     return result
 
+@app.get("/api/v1/admissions/students/{student_id}/profile")
+def admission_student_profile(student_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    assignments=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.status=="Active")).all()
+    academics=[]
+    for row in assignments:
+        unit=db.get(AcademicUnit,row.unit_id)
+        if unit: academics.append({"assignment_type":row.assignment_type,"unit_id":unit.id,"unit_name":unit.name,"unit_type":unit.unit_type})
+    links=db.scalars(select(ParentStudentLink).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id)).all()
+    guardians=[]
+    for link in links:
+        parent=db.get(User,link.parent_user_id)
+        if parent and parent.tenant_id==user.tenant_id:
+            guardians.append({"id":parent.id,"name":parent.name,"email":parent.email,"relationship":link.relationship,"is_active":parent.is_active})
+    history_count=db.scalar(select(func.count(EnrollmentHistory.id)).where(EnrollmentHistory.tenant_id==user.tenant_id,EnrollmentHistory.student_user_id==student.id)) or 0
+    return {"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","academics":academics,"guardians":guardians,"history_count":history_count}
+
 @app.get("/api/v1/admissions/students/{student_id}/history")
 def admission_history(student_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     student=db.get(User,student_id)

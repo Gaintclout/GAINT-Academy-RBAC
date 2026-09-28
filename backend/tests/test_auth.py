@@ -214,3 +214,34 @@ def test_admissions_guardian_link_is_reflected_in_student_list():
     assert rows.status_code==200
     target=next(x for x in rows.json() if x["id"]==student["id"])
     assert target["has_guardian"] is True
+
+
+def test_student_management_actions_and_rbac():
+    admin=_login("admin@gaintacademy.com")
+    teacher=_login("teacher@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    student=next(x for x in users if x["role"]=="Student")
+    parent=next(x for x in users if x["role"]=="Parent / Guardian")
+    assert client.patch(f"/api/v1/admin/students/{student['id']}",headers=teacher,json={"name":"Blocked"}).status_code==403
+    assert client.put(f"/api/v1/admin/students/{student['id']}/guardian",headers=teacher,json={"parent_user_id":parent["id"],"relationship":"Guardian"}).status_code==403
+    changed=client.patch(f"/api/v1/admin/students/{student['id']}",headers=admin,json={"name":student["name"]})
+    assert changed.status_code==200, changed.text
+    linked=client.put(f"/api/v1/admin/students/{student['id']}/guardian",headers=admin,json={"parent_user_id":parent["id"],"relationship":"Guardian"})
+    assert linked.status_code==200, linked.text
+    profile=client.get(f"/api/v1/admissions/students/{student['id']}/profile",headers=admin)
+    assert profile.status_code==200
+    assert any(g["id"]==parent["id"] for g in profile.json()["guardians"])
+    removed=client.delete(f"/api/v1/admin/students/{student['id']}/guardian",headers=admin)
+    assert removed.status_code==200
+    profile=client.get(f"/api/v1/admissions/students/{student['id']}/profile",headers=admin).json()
+    assert profile["guardians"]==[]
+
+def test_student_academic_management_validates_unit_type():
+    admin=_login("admin@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    student=next(x for x in users if x["role"]=="Student")
+    units=client.get("/api/v1/academic-structure",headers=admin).json()
+    non_section=next((x for x in units if x["unit_type"]!="SECTION_BATCH"),None)
+    if non_section:
+        r=client.put(f"/api/v1/admin/students/{student['id']}/academics",headers=admin,json={"section_unit_id":non_section["id"]})
+        assert r.status_code==400

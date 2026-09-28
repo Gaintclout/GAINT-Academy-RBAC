@@ -3,6 +3,7 @@ import { api } from "../api";
 import Dashboard from "./Dashboard";
 import RoleModule from "./RoleModule";
 import ParentTracking from "./ParentTracking";
+import ParentAcademics from "./ParentAcademics";
 import LiveSafetyMap from "./LiveSafetyMap";
 import Audit from "./Audit";
 import StudentSafety from "./StudentSafety";
@@ -89,6 +90,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <TeacherAcademicWorkspace title={active} ui={ui} />;
   } else if (user.role === "Student" && ["My Profile","Transport","Library","Events","Grievance"].includes(active)) {
     content = <StudentAcademicModule title={active} ui={ui} />;
+  } else if (user.role === "Parent / Guardian" && ["Attendance","Homework","Results"].includes(active)) {
+    content = <ParentAcademics title={active} ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Live Location") {
     content = <ParentTracking />;
   } else if (user.role === "Campus Admin" && active === "Live Safety Map") {

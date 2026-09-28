@@ -32,6 +32,7 @@ import UsersRoles from "./UsersRoles";
 import ParentStudentLinks from "./ParentStudentLinks";
 import StudentEnrollment from "./StudentEnrollment";
 import AdminStudents from "./AdminStudents";
+import StaffManagement from "./StaffManagement";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -71,6 +72,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <StudentEnrollment />;
   } else if (user.role === "Institution Admin" && active === "Students") {
     content = <AdminStudents />;
+  } else if (user.role === "Institution Admin" && active === "Staff") {
+    content = <StaffManagement />;
   } else if (user.role === "Institution Admin" && active === "Institution Setup") {
     content = <InstitutionSetup user={user} onUpdated={(institution) => onUserChange?.({ ...user, institution })} />;
   } else if (user.role === "Institution Admin" && active === "Academic Structure") {

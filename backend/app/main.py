@@ -701,9 +701,9 @@ def parent_children(
     return result
 
 def _fee_payload(row:FeeLedger):
-    balance=max(0.0,row.amount_due-row.amount_paid)
+    balance=max(0,row.amount_due-row.amount_paid)
     status="CANCELLED" if row.status=="CANCELLED" else ("PAID" if balance<=0 else ("PARTIAL" if row.amount_paid>0 else "DUE"))
-    return {"id":row.id,"student_user_id":row.student_user_id,"fee_code":row.fee_code,"title":row.title,"amount_due":row.amount_due,"amount_paid":row.amount_paid,"balance":balance,"due_at":row.due_at,"status":status}
+    return {"id":row.id,"student_user_id":row.student_user_id,"fee_code":row.fee_code,"title":row.title,"amount_due":float(row.amount_due),"amount_paid":float(row.amount_paid),"balance":float(balance),"due_at":row.due_at,"status":status}
 
 @app.get("/api/v1/finance/students")
 def finance_students(user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
@@ -716,7 +716,7 @@ def finance_payments(user:User=Depends(require_roles("Accounts","Institution Adm
     result=[]
     for x in rows:
         ledger=db.get(FeeLedger,x.ledger_id); student=db.get(User,x.student_user_id)
-        result.append({"id":x.id,"ledger_id":x.ledger_id,"fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "","student_user_id":x.student_user_id,"student_name":student.name if student else f"Student {x.student_user_id}","amount":x.amount,"reference":x.reference,"receipt_no":x.receipt_no,"paid_at":x.paid_at})
+        result.append({"id":x.id,"ledger_id":x.ledger_id,"fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "","student_user_id":x.student_user_id,"student_name":student.name if student else f"Student {x.student_user_id}","amount":float(x.amount),"reference":x.reference,"receipt_no":x.receipt_no,"paid_at":x.paid_at})
     return result
 
 @app.get("/api/v1/fee-ledger")
@@ -757,18 +757,18 @@ def finance_report(start_date:str|None=None,end_date:str|None=None,user:User=Dep
             st=st.where(FeePayment.paid_at<end)
     except ValueError: raise HTTPException(400,"Invalid report date")
     rows=db.scalars(st.order_by(FeePayment.paid_at.desc())).all()
-    items=[]; total=0.0
+    items=[]; total=0
     for x in rows:
         ledger=db.get(FeeLedger,x.ledger_id); student=db.get(User,x.student_user_id); total+=x.amount
         items.append({"receipt_no":x.receipt_no,"student_id":x.student_user_id,"student_name":student.name if student else f"Student {x.student_user_id}","student_email":student.email if student else "","fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "","amount":x.amount,"reference":x.reference,"paid_at":x.paid_at})
-    return {"start_date":start_date,"end_date":end_date,"payment_count":len(items),"total_collected":total,"payments":items}
+    return {"start_date":start_date,"end_date":end_date,"payment_count":len(items),"total_collected":float(total),"payments":items}
 
 @app.get("/api/v1/finance/summary")
 def finance_summary(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     rows=db.scalars(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)).all()
     active=[x for x in rows if x.status!="CANCELLED"]
-    assigned=sum(x.amount_due for x in active); collected=sum(x.amount_paid for x in active); outstanding=max(0.0,assigned-collected)
-    return {"assigned":assigned,"collected":collected,"outstanding":outstanding,"ledger_count":len(active),"paid_count":sum(1 for x in active if x.amount_paid>=x.amount_due),"partial_count":sum(1 for x in active if 0<x.amount_paid<x.amount_due),"due_count":sum(1 for x in active if x.amount_paid<=0)}
+    assigned=sum((x.amount_due for x in active),0); collected=sum((x.amount_paid for x in active),0); outstanding=max(0,assigned-collected)
+    return {"assigned":float(assigned),"collected":float(collected),"outstanding":float(outstanding),"ledger_count":len(active),"paid_count":sum(1 for x in active if x.amount_paid>=x.amount_due),"partial_count":sum(1 for x in active if 0<x.amount_paid<x.amount_due),"due_count":sum(1 for x in active if x.amount_paid<=0)}
 
 @app.post("/api/v1/fee-ledger/{ledger_id}/payments")
 def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):

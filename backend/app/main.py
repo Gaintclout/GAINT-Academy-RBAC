@@ -170,6 +170,18 @@ def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institutio
     audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
     return {"ok":True}
 
+@app.get("/api/v1/admissions/summary")
+def admission_summary(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Student")).all()
+    active=sum(1 for x in students if x.is_active); withdrawn=len(students)-active
+    without_section=0; without_guardian=0
+    for student in students:
+        section=db.scalar(select(AcademicAssignment.id).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==student.id,AcademicAssignment.assignment_type=="SECTION_ASSIGNMENT",AcademicAssignment.status=="Active"))
+        if not section: without_section+=1
+        guardian=db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id))
+        if not guardian: without_guardian+=1
+    return {"total":len(students),"active":active,"withdrawn":withdrawn,"without_section":without_section,"without_guardian":without_guardian}
+
 @app.get("/api/v1/admissions/students")
 def admission_students(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Student").order_by(User.name)).all()

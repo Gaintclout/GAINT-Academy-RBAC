@@ -29,6 +29,7 @@ import TeacherResults from "./TeacherResults";
 import AcademicTranscript from "./AcademicTranscript";
 import StudentExams from "./StudentExams";
 import UsersRoles from "./UsersRoles";
+import ParentStudentLinks from "./ParentStudentLinks";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -48,6 +49,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
           if (!items.includes("Academic Structure")) items = [...items, "Academic Structure"];
           if (!items.includes("Enrollment & Assignments")) items = [...items, "Enrollment & Assignments"];
           if (!items.includes("Grading Scheme")) items = [...items, "Grading Scheme"];
+          if (!items.includes("Parent ↔ Student Links")) items = [...items, "Parent ↔ Student Links"];
         }
         setMenu(items);
         setActive((current) => items.includes(current) ? current : "Dashboard");
@@ -73,6 +75,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <GradeRules ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Users & Roles") {
     content = <UsersRoles currentUser={user} />;
+  } else if (user.role === "Institution Admin" && active === "Parent ↔ Student Links") {
+    content = <ParentStudentLinks />;
   } else if (user.role === "Accounts" && ["Fees","Payments","Receipts","Finance Reports"].includes(active)) {
     content = <AccountsFinance title={active} ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {

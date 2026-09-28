@@ -30,6 +30,7 @@ import AcademicTranscript from "./AcademicTranscript";
 import StudentExams from "./StudentExams";
 import UsersRoles from "./UsersRoles";
 import ParentStudentLinks from "./ParentStudentLinks";
+import StudentEnrollment from "./StudentEnrollment";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -65,6 +66,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
   let content;
   if (active === "Dashboard") {
     content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Admissions") {
+    content = <StudentEnrollment />;
   } else if (user.role === "Institution Admin" && active === "Institution Setup") {
     content = <InstitutionSetup user={user} onUpdated={(institution) => onUserChange?.({ ...user, institution })} />;
   } else if (user.role === "Institution Admin" && active === "Academic Structure") {

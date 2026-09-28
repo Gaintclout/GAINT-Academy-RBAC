@@ -732,7 +732,7 @@ def create_fee_ledger(payload:FeeLedgerIn,user:User=Depends(require_roles("Accou
     if not student or student.tenant_id!=user.tenant_id or student.role!="Student" or not student.is_active: raise HTTPException(400,"Invalid student")
     code=payload.fee_code.strip().upper()
     if db.scalar(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id,FeeLedger.student_user_id==student.id,FeeLedger.fee_code==code)): raise HTTPException(409,"This fee is already assigned to the student")
-    due=_parse_due(payload.due_at)
+    due=_parse_due_at(payload.due_at)
     row=FeeLedger(tenant_id=user.tenant_id,student_user_id=student.id,fee_code=code,title=payload.title.strip(),amount_due=payload.amount_due,amount_paid=0,due_at=due,status="DUE")
     db.add(row); db.flush(); audit(db,user,"CREATE","fee_ledger",f"student={student.id};fee={code};amount={payload.amount_due}"); db.commit(); db.refresh(row)
     return _fee_payload(row)

@@ -192,7 +192,8 @@ def admission_students(user:User=Depends(require_roles("Institution Admin")),db:
         for a in assignments:
             unit=db.get(AcademicUnit,a.unit_id)
             if unit: details.append({"id":a.id,"assignment_type":a.assignment_type,"unit_id":unit.id,"unit_name":unit.name,"unit_type":unit.unit_type})
-        guardian_link=db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id))\n        result.append({"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","assignments":details,"has_guardian":bool(guardian_link)})
+        guardian_link=db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==student.id))
+        result.append({"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","assignments":details,"has_guardian":bool(guardian_link)})
     return result
 
 @app.get("/api/v1/admissions/students/{student_id}/profile")

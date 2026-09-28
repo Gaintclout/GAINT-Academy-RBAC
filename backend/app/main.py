@@ -746,6 +746,23 @@ def cancel_fee_ledger(ledger_id:int,user:User=Depends(require_roles("Accounts","
     row.status="CANCELLED"; audit(db,user,"CANCEL","fee_ledger",f"ledger={row.id};student={row.student_user_id}"); db.commit()
     return _fee_payload(row)
 
+@app.get("/api/v1/finance/report")
+def finance_report(start_date:str|None=None,end_date:str|None=None,user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    st=select(FeePayment).where(FeePayment.tenant_id==user.tenant_id)
+    try:
+        if start_date: st=st.where(FeePayment.paid_at>=dt.datetime.fromisoformat(start_date))
+        if end_date:
+            end=dt.datetime.fromisoformat(end_date)
+            if len(end_date)<=10: end=end+dt.timedelta(days=1)
+            st=st.where(FeePayment.paid_at<end)
+    except ValueError: raise HTTPException(400,"Invalid report date")
+    rows=db.scalars(st.order_by(FeePayment.paid_at.desc())).all()
+    items=[]; total=0.0
+    for x in rows:
+        ledger=db.get(FeeLedger,x.ledger_id); student=db.get(User,x.student_user_id); total+=x.amount
+        items.append({"receipt_no":x.receipt_no,"student_id":x.student_user_id,"student_name":student.name if student else f"Student {x.student_user_id}","student_email":student.email if student else "","fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "","amount":x.amount,"reference":x.reference,"paid_at":x.paid_at})
+    return {"start_date":start_date,"end_date":end_date,"payment_count":len(items),"total_collected":total,"payments":items}
+
 @app.get("/api/v1/finance/summary")
 def finance_summary(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     rows=db.scalars(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)).all()

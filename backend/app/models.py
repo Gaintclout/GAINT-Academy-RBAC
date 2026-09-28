@@ -1,5 +1,5 @@
 import datetime as dt
-from sqlalchemy import String, Text, DateTime, Float, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Text, DateTime, Float, Numeric, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
@@ -201,8 +201,8 @@ class FeeLedger(Base):
     student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     fee_code: Mapped[str] = mapped_column(String(60), index=True)
     title: Mapped[str] = mapped_column(String(180))
-    amount_due: Mapped[float] = mapped_column(Float)
-    amount_paid: Mapped[float] = mapped_column(Float, default=0)
+    amount_due: Mapped[float] = mapped_column(Numeric(12, 2))
+    amount_paid: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     due_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="DUE")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
@@ -213,7 +213,7 @@ class FeePayment(Base):
     tenant_id: Mapped[int] = mapped_column(index=True)
     ledger_id: Mapped[int] = mapped_column(ForeignKey("fee_ledgers.id"), index=True)
     student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
     reference: Mapped[str] = mapped_column(String(100), default="")
     receipt_no: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))

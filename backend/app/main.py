@@ -700,6 +700,68 @@ def parent_children(
             })
     return result
 
+def _linked_child(db:Session,parent:User,student_id:int):
+    link=db.scalar(select(ParentStudentLink).where(
+        ParentStudentLink.parent_user_id==parent.id,
+        ParentStudentLink.student_user_id==student_id,
+        ParentStudentLink.tenant_id==parent.tenant_id,
+    ))
+    if not link: raise HTTPException(403,"This student is not linked to your account")
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=parent.tenant_id or student.role!="Student" or not student.is_active:
+        raise HTTPException(404,"Linked student not found")
+    return student
+
+@app.get("/api/v1/parents/children/{student_id}/academics")
+def parent_child_academics(student_id:int,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    student=_linked_child(db,user,student_id)
+    unit_ids=_assigned_unit_ids(db,student)
+    visible_units=set(unit_ids)
+    for uid in list(unit_ids):
+        unit=db.get(AcademicUnit,uid)
+        while unit and unit.parent_id:
+            unit=db.get(AcademicUnit,unit.parent_id)
+            if not unit or unit.tenant_id!=user.tenant_id: break
+            if unit.unit_type=="COURSE": visible_units.add(unit.id)
+    works=db.scalars(select(AcademicWork).where(
+        AcademicWork.tenant_id==user.tenant_id,
+        AcademicWork.unit_id.in_(visible_units) if visible_units else False,
+    ).order_by(AcademicWork.id.desc())).all() if visible_units else []
+    homework=[]
+    for work in works:
+        if student.id not in _students_for_unit(db,user.tenant_id,work.unit_id): continue
+        if work.work_type not in {"HOMEWORK","ASSIGNMENT"}: continue
+        submission=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work.id,StudentAcademicWork.student_user_id==student.id))
+        homework.append({"id":work.id,"work_type":work.work_type,"title":work.title,"due_at":work.due_at,"status":submission.status if submission else "NOT_SUBMITTED","score":submission.score if submission else None})
+
+    sessions=db.scalars(select(ClassSession).where(
+        ClassSession.tenant_id==user.tenant_id,
+        ClassSession.unit_id.in_(visible_units) if visible_units else False,
+    ).order_by(ClassSession.starts_at.desc())).all() if visible_units else []
+    attendance=[]; attended=0; counted=0; excused=0
+    for session in sessions:
+        if student.id not in _students_for_unit(db,user.tenant_id,session.unit_id): continue
+        entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==student.id))
+        status=entry.status if entry else "UNMARKED"
+        if status=="EXCUSED": excused+=1
+        elif status!="UNMARKED":
+            counted+=1
+            if status in {"PRESENT","LATE"}: attended+=1
+        attendance.append({"session_id":session.id,"title":session.title,"starts_at":session.starts_at,"room":session.room,"status":status})
+
+    results=db.scalars(select(ExamResult).where(
+        ExamResult.tenant_id==user.tenant_id,
+        ExamResult.student_user_id==student.id,
+        ExamResult.published==True,
+    ).order_by(ExamResult.id.desc())).all()
+    result_rows=[]
+    for result in results:
+        exam=db.get(AcademicWork,result.work_id)
+        if exam: result_rows.append({"exam_id":exam.id,"title":exam.title,"marks":result.marks,"percentage":result.percentage,"grade":result.grade,"grade_point":result.grade_point,"result_status":result.result_status})
+
+    audit(db,user,"ACADEMIC_VIEW",f"student:{student.id}","parent_link_verified"); db.commit()
+    return {"student":{"id":student.id,"name":student.name,"email":student.email},"attendance":{"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"counted_sessions":counted,"excused":excused,"sessions":attendance},"homework":homework,"results":result_rows}
+
 def _latest_location(db:Session, student_id:int, tenant_id:int):
     return db.scalar(
         select(StudentLocation)

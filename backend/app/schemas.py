@@ -154,3 +154,10 @@ class StudentEnrollmentIn(BaseModel):
 class StudentEnrollmentUpdate(BaseModel):
     section_unit_id: Optional[int] = None
     status: Optional[str] = None
+
+
+class StudentAdminUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    email: Optional[str] = Field(default=None, min_length=5, max_length=180)
+    campus_id: Optional[int] = Field(default=None, ge=1)
+    is_active: Optional[bool] = None

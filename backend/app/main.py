@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate
 from .security import verify_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -247,6 +247,34 @@ def users(
         {"id":x.id,"name":x.name,"email":x.email,"role":x.role,"campus_id":x.campus_id,"is_active":x.is_active}
         for x in rows
     ]
+
+@app.patch("/api/v1/users/{target_user_id}")
+def update_user(
+    target_user_id:int,
+    payload:UserAdminUpdate,
+    user:User=Depends(require_roles("Institution Admin")),
+    db:Session=Depends(get_db),
+):
+    target=db.get(User,target_user_id)
+    if not target or target.tenant_id!=user.tenant_id:
+        raise HTTPException(404,"User not found")
+    allowed_roles={"Institution Admin","Teacher","Student","Parent / Guardian","Accounts","HR","Campus Admin","Auditor"}
+    data=payload.model_dump(exclude_unset=True)
+    if "role" in data:
+        role=(data["role"] or "").strip()
+        if role not in allowed_roles: raise HTTPException(400,"Unsupported role")
+        if target.id==user.id and role!="Institution Admin":
+            raise HTTPException(409,"You cannot remove your own Institution Admin role")
+        target.role=role
+    if "is_active" in data:
+        if target.id==user.id and data["is_active"] is False:
+            raise HTTPException(409,"You cannot deactivate your own account")
+        target.is_active=data["is_active"]
+    if "name" in data: target.name=data["name"].strip()
+    if "campus_id" in data: target.campus_id=data["campus_id"]
+    audit(db,user,"UPDATE","user",f"user_id={target.id};fields={','.join(sorted(data.keys()))}")
+    db.commit(); db.refresh(target)
+    return {"id":target.id,"name":target.name,"email":target.email,"role":target.role,"campus_id":target.campus_id,"is_active":target.is_active}
 
 def _assigned_unit_ids(db:Session,user:User):
     return set(db.scalars(select(AcademicAssignment.unit_id).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.user_id==user.id,AcademicAssignment.status=="Active")).all())

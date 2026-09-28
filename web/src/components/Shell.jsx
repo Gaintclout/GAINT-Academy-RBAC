@@ -24,6 +24,7 @@ import GradeRules from "./GradeRules";
 import StudentResults from "./StudentResults";
 import TeacherResults from "./TeacherResults";
 import AcademicTranscript from "./AcademicTranscript";
+import StudentExams from "./StudentExams";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -76,7 +77,9 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <StudentAttendanceTimetable title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["Timetable","Attendance"].includes(active)) {
     content = <TeacherSessions mode={active} ui={ui} />;
-  } else if (user.role === "Student" && ["Homework","Assignments","Exams"].includes(active)) {
+  } else if (user.role === "Student" && active === "Exams") {
+    content = <StudentExams ui={ui} />;
+  } else if (user.role === "Student" && ["Homework","Assignments"].includes(active)) {
     content = <AcademicWorkStudent title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["Homework","Assignments","Exams"].includes(active)) {
     content = <AcademicWorkTeacher title={active} ui={ui} />;

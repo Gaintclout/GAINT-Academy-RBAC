@@ -32,6 +32,8 @@ jobs:
           pip install -r requirements.txt
       - name: Compile backend
         run: python -m compileall -q app
+      - name: Validate Alembic migrations
+        run: alembic upgrade head
       - name: Import FastAPI application
         run: python -c "from app.main import app; print(app.title)"
       - name: Run backend tests

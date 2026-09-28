@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -169,6 +169,27 @@ def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institutio
     if child: raise HTTPException(409,"Remove child units before deleting this item")
     audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
     return {"ok":True}
+
+@app.patch("/api/v1/admin/students/{student_id}")
+def admin_update_student(student_id:int,payload:StudentAdminUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    student=db.get(User,student_id)
+    if not student or student.tenant_id!=user.tenant_id or student.role!="Student": raise HTTPException(404,"Student not found")
+    data=payload.model_dump(exclude_unset=True)
+    if "email" in data:
+        email=data["email"].strip().lower()
+        duplicate=db.scalar(select(User).where(User.email==email,User.id!=student.id))
+        if duplicate: raise HTTPException(409,"Email address is already registered")
+        student.email=email
+    if "name" in data: student.name=data["name"].strip()
+    if "campus_id" in data: student.campus_id=data["campus_id"]
+    if "is_active" in data and student.is_active!=data["is_active"]:
+        previous="ACTIVE" if student.is_active else "WITHDRAWN"
+        student.is_active=data["is_active"]
+        status="ACTIVE" if student.is_active else "WITHDRAWN"
+        db.add(EnrollmentHistory(tenant_id=user.tenant_id,student_user_id=student.id,event_type="REACTIVATED" if student.is_active else "WITHDRAWN",details=f"from={previous};to={status};source=students",actor_user_id=user.id))
+    audit(db,user,"UPDATE","student",f"student={student.id};fields={','.join(data.keys())}")
+    db.commit()
+    return {"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn"}
 
 @app.get("/api/v1/admissions/summary")
 def admission_summary(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

@@ -28,6 +28,7 @@ import StudentResults from "./StudentResults";
 import TeacherResults from "./TeacherResults";
 import AcademicTranscript from "./AcademicTranscript";
 import StudentExams from "./StudentExams";
+import UsersRoles from "./UsersRoles";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -70,6 +71,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AcademicAssignments ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Grading Scheme") {
     content = <GradeRules ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Users & Roles") {
+    content = <UsersRoles currentUser={user} />;
   } else if (user.role === "Accounts" && ["Fees","Payments","Receipts","Finance Reports"].includes(active)) {
     content = <AccountsFinance title={active} ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {

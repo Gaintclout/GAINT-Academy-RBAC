@@ -123,3 +123,11 @@ class UserAdminUpdate(BaseModel):
     role: Optional[str] = None
     campus_id: Optional[int] = Field(default=None, ge=1)
     is_active: Optional[bool] = None
+
+
+class UserAdminCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=180)
+    password: str = Field(min_length=8, max_length=128)
+    role: str
+    campus_id: int = Field(default=1, ge=1)

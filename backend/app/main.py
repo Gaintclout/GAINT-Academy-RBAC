@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -354,6 +354,24 @@ def create_student_grievance(payload:GrievanceIn,user:User=Depends(require_roles
     return {"id":row.id,"ticket_no":row.ticket_no,"category":row.category,"subject":row.subject,
             "priority":row.priority,"status":row.status,"latest_update":row.latest_update,
             "created_at":row.created_at,"updated_at":row.updated_at}
+
+@app.get("/api/v1/hr/leave")
+def hr_leave_requests(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(TeacherLeaveRequest).where(TeacherLeaveRequest.tenant_id==user.tenant_id).order_by(TeacherLeaveRequest.created_at.desc())).all()
+    teachers={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Teacher")).all()}
+    return [{"id":x.id,"teacher_user_id":x.teacher_user_id,"teacher_name":teachers[x.teacher_user_id].name if x.teacher_user_id in teachers else "Unknown","leave_type":x.leave_type,"start_date":x.start_date,"end_date":x.end_date,"reason":x.reason,"status":x.status,"reviewer_note":x.reviewer_note,"created_at":x.created_at} for x in rows]
+
+@app.patch("/api/v1/hr/leave/{leave_id}")
+def review_hr_leave(leave_id:int,payload:HRLeaveReviewIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(TeacherLeaveRequest,leave_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Leave request not found")
+    if row.status!="PENDING": raise HTTPException(409,"Leave request has already been reviewed")
+    status=payload.status.strip().upper()
+    if status not in {"APPROVED","REJECTED"}: raise HTTPException(400,"Status must be APPROVED or REJECTED")
+    if status=="REJECTED" and len(payload.reviewer_note.strip())<2: raise HTTPException(400,"Reviewer note is required when rejecting leave")
+    row.status=status;row.reviewer_user_id=user.id;row.reviewer_note=payload.reviewer_note.strip();row.updated_at=dt.datetime.utcnow()
+    audit(db,user,"REVIEW","teacher_leave",f"leave={row.id};teacher={row.teacher_user_id};status={status}");db.commit();db.refresh(row)
+    return {"id":row.id,"status":row.status,"reviewer_note":row.reviewer_note,"updated_at":row.updated_at}
 
 @app.get("/api/v1/teacher/leave")
 def teacher_leave_requests(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):

@@ -700,6 +700,12 @@ def module_access(page: str, user: User = Depends(current_user)):
 def dashboard(user: User = Depends(current_user)):
     return dashboard_for(user.role)
 
+@app.get("/api/v1/hr/staff")
+def hr_staff(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}
+    rows=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role.in_(staff_roles)).order_by(User.name)).all()
+    return [{"id":x.id,"name":x.name,"email":x.email,"role":x.role,"campus_id":x.campus_id,"is_active":x.is_active} for x in rows]
+
 @app.get("/api/v1/users")
 def users(
     user: User = Depends(require_roles("Institution Admin","Campus Admin","Auditor")),

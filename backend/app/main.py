@@ -382,6 +382,29 @@ def create_teacher_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     return {"id":row.id,"leave_type":row.leave_type,"start_date":row.start_date,"end_date":row.end_date,
             "reason":row.reason,"status":row.status,"reviewer_note":row.reviewer_note,"created_at":row.created_at}
 
+@app.get("/api/v1/parents/grievances")
+def parent_grievances(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(Grievance).where(
+        Grievance.tenant_id==user.tenant_id,Grievance.created_by_user_id==user.id
+    ).order_by(Grievance.created_at.desc())).all()
+    return [{"id":x.id,"ticket_no":x.ticket_no,"category":x.category,"subject":x.subject,"details":x.details,
+             "priority":x.priority,"status":x.status,"latest_update":x.latest_update,
+             "created_at":x.created_at,"updated_at":x.updated_at} for x in rows]
+
+@app.post("/api/v1/parents/grievances")
+def create_parent_grievance(payload:GrievanceIn,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    category=payload.category.strip() or "General"
+    priority=payload.priority.strip().title()
+    if priority not in {"Low","Normal","High","Urgent"}: raise HTTPException(400,"Invalid grievance priority")
+    row=Grievance(tenant_id=user.tenant_id,campus_id=user.campus_id or 1,created_by_user_id=user.id,
+                  ticket_no="PENDING",category=category,subject=payload.subject.strip(),details=payload.details.strip(),
+                  priority=priority,status="Open")
+    db.add(row); db.flush(); row.ticket_no=f"GR-{row.id:06d}"
+    audit(db,user,"CREATE","Grievance",row.ticket_no); db.commit(); db.refresh(row)
+    return {"id":row.id,"ticket_no":row.ticket_no,"category":row.category,"subject":row.subject,
+            "details":row.details,"priority":row.priority,"status":row.status,"latest_update":row.latest_update,
+            "created_at":row.created_at}
+
 @app.get("/api/v1/parents/events")
 def parent_events(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
     links=db.scalars(select(ParentStudentLink).where(

@@ -55,6 +55,21 @@ class StaffDocument(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class RecruitmentCandidate(Base):
+    __tablename__ = "recruitment_candidates"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    email: Mapped[str] = mapped_column(String(180), index=True)
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    position: Mapped[str] = mapped_column(String(120), index=True)
+    stage: Mapped[str] = mapped_column(String(40), default="APPLIED", index=True)
+    source: Mapped[str] = mapped_column(String(80), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class ParentStudentLink(Base):
     __tablename__ = "parent_student_links"
     __table_args__ = (UniqueConstraint("parent_user_id","student_user_id", name="uq_parent_student"),)

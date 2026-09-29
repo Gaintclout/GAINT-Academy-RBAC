@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "../api";
 
 const MODULES = {
@@ -45,22 +45,56 @@ function EmptyTable({ columns, message }) {
 }
 
 function StudentProfile({ user, ui }) {
+  const [profile, setProfile] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.get("/api/v1/student/profile")
+      .then((response) => { setProfile(response.data); setError(""); })
+      .catch((e) => setError(e?.response?.data?.detail || "Unable to load student profile."));
+  }, []);
+
+  if (error) return <div className="error">{error}</div>;
+  if (!profile) return <section className="panel">Loading student profile...</section>;
+
   const rows = [
-    ["Name", user?.name || "—"],
-    ["Email", user?.email || "—"],
-    ["Role", user?.role || "Student"],
+    ["Name", profile.name || user?.name || "—"],
+    ["Email", profile.email || user?.email || "—"],
+    ["Status", profile.status || "—"],
+    ["Campus ID", profile.campus_id ?? "—"],
     ["Institution", ui?.institutionName || "—"],
     ["Institution Type", ui?.label || "—"],
   ];
-  return <section className="panel structure-table">
-    <div className="table-scroll">
-      <table>
-        <thead><tr><th>Field</th><th>Value</th></tr></thead>
-        <tbody>{rows.map(([label, value]) => <tr key={label}><td><b>{label}</b></td><td>{value}</td></tr>)}</tbody>
-      </table>
-    </div>
-    <div className="readonly-note">Academic profile fields such as admission number, program, section and guardian will appear only after they are supplied by the student profile API.</div>
-  </section>;
+
+  return <>
+    <section className="panel structure-table">
+      <div className="panel-title"><b>Student Identity</b><span>Live</span></div>
+      <div className="table-scroll">
+        <table>
+          <thead><tr><th>Field</th><th>Value</th></tr></thead>
+          <tbody>{rows.map(([label, value]) => <tr key={label}><td><b>{label}</b></td><td>{value}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+    <section className="panel structure-table">
+      <div className="panel-title"><b>Academic Assignments</b><span>{profile.academics?.length || 0}</span></div>
+      <div className="table-scroll">
+        <table>
+          <thead><tr><th>Type</th><th>Code</th><th>Academic Unit</th><th>Unit Type</th></tr></thead>
+          <tbody>{profile.academics?.length ? profile.academics.map((row) => <tr key={row.assignment_type + "-" + row.unit_id}><td>{row.assignment_type.replaceAll("_", " ")}</td><td>{row.unit_code || "—"}</td><td><b>{row.unit_name}</b></td><td>{row.unit_type.replaceAll("_", " ")}</td></tr>) : <tr><td colSpan="4" className="empty-cell">No active academic assignments are available.</td></tr>}</tbody>
+        </table>
+      </div>
+    </section>
+    <section className="panel structure-table">
+      <div className="panel-title"><b>Guardians</b><span>{profile.guardians?.length || 0}</span></div>
+      <div className="table-scroll">
+        <table>
+          <thead><tr><th>Name</th><th>Relationship</th></tr></thead>
+          <tbody>{profile.guardians?.length ? profile.guardians.map((row, index) => <tr key={index}><td><b>{row.name}</b></td><td>{row.relationship}</td></tr>) : <tr><td colSpan="2" className="empty-cell">No guardian is linked to this student account.</td></tr>}</tbody>
+        </table>
+      </div>
+    </section>
+  </>;
 }
 
 export default function StudentAcademicModule({ title, ui, user }) {

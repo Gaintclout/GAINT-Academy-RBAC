@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -757,6 +757,27 @@ def campus_transport(user:User=Depends(require_roles("Campus Admin","Institution
     students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(student_ids))).all() if student_ids else []
     names={x.id:x.name for x in students}
     return {"summary":{"routes":len(routes),"active_routes":sum(1 for x in routes if x.status=="Active"),"vehicles":len(vehicles),"active_vehicles":sum(1 for x in vehicles if x.status=="Active"),"allocations":len(allocations)},"routes":[{"id":x.id,"name":x.name,"code":x.code,"status":x.status} for x in routes],"vehicles":[{"id":x.id,"vehicle_number":x.vehicle_number,"label":x.label,"status":x.status} for x in vehicles],"allocations":[{"id":x.id,"student_name":names.get(x.student_user_id,""),"route_name":route_names.get(x.route_id,""),"vehicle_number":vehicle_names.get(x.vehicle_id,"") if x.vehicle_id else "","pickup_time":x.pickup_time,"drop_time":x.drop_time,"status":x.status} for x in allocations]}
+
+@app.get("/api/v1/campus/visitors")
+def campus_visitors(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(CampusVisitor).where(CampusVisitor.tenant_id==user.tenant_id,CampusVisitor.campus_id==user.campus_id).order_by(CampusVisitor.id.desc()).limit(200)).all()
+    return [{"id":x.id,"name":x.name,"phone":x.phone,"purpose":x.purpose,"person_to_meet":x.person_to_meet,"status":x.status,"checked_in_at":x.checked_in_at,"checked_out_at":x.checked_out_at} for x in rows]
+
+@app.post("/api/v1/campus/visitors")
+def campus_visitor_checkin(payload:CampusVisitorIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    row=CampusVisitor(tenant_id=user.tenant_id,campus_id=user.campus_id,recorded_by=user.id,**payload.model_dump())
+    db.add(row); audit(db,user,"VISITOR_CHECK_IN","campus_visitor",payload.name); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.patch("/api/v1/campus/visitors/{visitor_id}")
+def campus_visitor_status(visitor_id:int,payload:CampusVisitorStatusIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusVisitor).where(CampusVisitor.id==visitor_id,CampusVisitor.tenant_id==user.tenant_id,CampusVisitor.campus_id==user.campus_id))
+    if not row: raise HTTPException(404,"Visitor not found")
+    if payload.status!="CHECKED_OUT": raise HTTPException(400,"Only CHECKED_OUT is allowed")
+    if row.status=="CHECKED_OUT": return {"id":row.id,"status":row.status}
+    row.status="CHECKED_OUT"; row.checked_out_at=dt.datetime.utcnow()
+    audit(db,user,"VISITOR_CHECK_OUT",f"campus_visitor:{row.id}",row.name); db.commit()
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

@@ -27,6 +27,19 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class StaffAttendance(Base):
+    __tablename__ = "staff_attendance"
+    __table_args__ = (UniqueConstraint("tenant_id","staff_user_id","attendance_date", name="uq_staff_attendance_day"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    staff_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    attendance_date: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="PRESENT")
+    note: Mapped[str] = mapped_column(Text, default="")
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class ParentStudentLink(Base):
     __tablename__ = "parent_student_links"
     __table_args__ = (UniqueConstraint("parent_user_id","student_user_id", name="uq_parent_student"),)

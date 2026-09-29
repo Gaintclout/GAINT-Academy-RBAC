@@ -49,6 +49,32 @@ class Record(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class AcademyEvent(Base):
+    __tablename__ = "academy_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    event_type: Mapped[str] = mapped_column(String(60), default="General")
+    venue: Mapped[str] = mapped_column(String(180), default="")
+    starts_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    ends_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    organizer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    audience_role: Mapped[str] = mapped_column(String(60), default="ALL")
+    registration_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    registration_deadline: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="Published")
+
+class EventRegistration(Base):
+    __tablename__ = "event_registrations"
+    __table_args__ = (UniqueConstraint("tenant_id","event_id","user_id", name="uq_event_registration_user"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("academy_events.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Registered")
+    registered_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class LibraryBook(Base):
     __tablename__ = "library_books"
     __table_args__ = (UniqueConstraint("tenant_id","accession_no", name="uq_library_book_accession"),)

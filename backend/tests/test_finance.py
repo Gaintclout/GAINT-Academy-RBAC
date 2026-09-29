@@ -72,3 +72,24 @@ def test_receipts_visible_to_owner_and_linked_parent_only():
     assert client.get(f"/api/v1/fee-ledger/{fee['id']}/receipts",headers=auth("student1@test.local")).status_code==200
     assert client.get(f"/api/v1/fee-ledger/{fee['id']}/receipts",headers=auth("parent1@test.local")).status_code==200
     assert client.get(f"/api/v1/fee-ledger/{fee['id']}/receipts",headers=auth("parent2@test.local")).status_code==404
+
+
+def test_accounts_concession_refund_and_reconciliation_validation():
+    i=ids(); h=auth("accounts1@test.local"); student=auth("student1@test.local")
+    fee=create_fee(h,i["student1@test.local"],"ADVANCED",100).json()
+    assert client.get("/api/v1/finance/concessions",headers=student).status_code==403
+    assert client.post("/api/v1/finance/concessions",headers=student,json={"ledger_id":fee["id"],"amount":10,"reason":"Scholarship"}).status_code==403
+    assert client.post("/api/v1/finance/concessions",headers=h,json={"ledger_id":fee["id"],"amount":101,"reason":"Too much"}).status_code==400
+    concession=client.post("/api/v1/finance/concessions",headers=h,json={"ledger_id":fee["id"],"amount":10,"reason":"Scholarship"})
+    assert concession.status_code==200
+    payment=client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":50,"reference":"PAY-ADV"}); assert payment.status_code==200
+    payment_id=client.get("/api/v1/finance/payments",headers=h).json()[0]["id"]
+    assert client.get("/api/v1/finance/refunds",headers=student).status_code==403
+    assert client.post("/api/v1/finance/refunds",headers=h,json={"payment_id":payment_id,"amount":51,"reason":"Too much","reference":"REF-X"}).status_code==400
+    refund=client.post("/api/v1/finance/refunds",headers=h,json={"payment_id":payment_id,"amount":20,"reason":"Approved reversal","reference":"REF-1"}); assert refund.status_code==200
+    assert client.post("/api/v1/finance/refunds",headers=h,json={"payment_id":payment_id,"amount":1,"reason":"Duplicate reference","reference":"REF-1"}).status_code==409
+    assert client.get("/api/v1/finance/reconciliations",headers=student).status_code==403
+    recon=client.post("/api/v1/finance/reconciliations",headers=h,json={"reconciliation_date":payment.json()["ledger"].get("due_at") or "2026-09-29","bank_amount":0,"reference":"BANK-DAY","notes":"Daily close"})
+    assert recon.status_code==200
+    assert recon.json()["status"] in {"MATCHED","VARIANCE"}
+    assert client.post("/api/v1/finance/reconciliations",headers=h,json={"reconciliation_date":"2026-09-29","bank_amount":0,"reference":"BANK-DAY","notes":""}).status_code==409

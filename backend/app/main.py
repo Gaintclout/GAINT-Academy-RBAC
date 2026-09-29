@@ -781,6 +781,67 @@ def _students_for_unit(db:Session,tenant_id:int,unit_id:int):
     )).all()
     return set(students)
 
+@app.get("/api/v1/parents/messages/recipients")
+def parent_message_recipients(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    links=db.scalars(select(ParentStudentLink).where(
+        ParentStudentLink.parent_user_id==user.id,ParentStudentLink.tenant_id==user.tenant_id)).all()
+    result=[]; seen=set()
+    for link in links:
+        student=db.get(User,link.student_user_id)
+        if not student or student.tenant_id!=user.tenant_id: continue
+        unit_ids=_assigned_unit_ids(db,student)
+        for uid in unit_ids:
+            assignments=db.scalars(select(AcademicAssignment).where(
+                AcademicAssignment.tenant_id==user.tenant_id,
+                AcademicAssignment.unit_id==uid,
+                AcademicAssignment.assignment_type=="TEACHER",
+                AcademicAssignment.status=="Active",
+            )).all()
+            for assignment in assignments:
+                teacher=db.get(User,assignment.user_id)
+                key=(teacher.id if teacher else None,student.id)
+                if teacher and teacher.role=="Teacher" and teacher.is_active and key not in seen:
+                    seen.add(key); result.append({"user_id":teacher.id,"name":teacher.name,"student_user_id":student.id,"student_name":student.name})
+    return result
+
+@app.get("/api/v1/parents/messages")
+def parent_messages(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(CommunicationMessage).where(
+        CommunicationMessage.tenant_id==user.tenant_id,
+        ((CommunicationMessage.sender_user_id==user.id)|(CommunicationMessage.recipient_user_id==user.id)),
+    ).order_by(CommunicationMessage.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        sender=db.get(User,row.sender_user_id); recipient=db.get(User,row.recipient_user_id)
+        student=db.get(User,row.student_user_id) if row.student_user_id else None
+        result.append({"id":row.id,"direction":"Sent" if row.sender_user_id==user.id else "Received",
+                       "sender":sender.name if sender and sender.tenant_id==user.tenant_id else "Unknown",
+                       "recipient":recipient.name if recipient and recipient.tenant_id==user.tenant_id else "Unknown",
+                       "student_name":student.name if student and student.tenant_id==user.tenant_id else None,
+                       "subject":row.subject,"body":row.body,"status":row.status,"created_at":row.created_at})
+    return result
+
+@app.post("/api/v1/parents/messages")
+def send_parent_message(payload:TeacherMessageIn,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    if not payload.student_user_id: raise HTTPException(400,"Student context is required")
+    student=_linked_child(db,user,payload.student_user_id)
+    teacher=db.get(User,payload.recipient_user_id)
+    if not teacher or teacher.tenant_id!=user.tenant_id or teacher.role!="Teacher" or not teacher.is_active:
+        raise HTTPException(404,"Teacher not available")
+    unit_ids=_assigned_unit_ids(db,student)
+    allowed=False
+    for uid in unit_ids:
+        if db.scalar(select(AcademicAssignment.id).where(
+            AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.unit_id==uid,
+            AcademicAssignment.user_id==teacher.id,AcademicAssignment.assignment_type=="TEACHER",
+            AcademicAssignment.status=="Active")):
+            allowed=True; break
+    if not allowed: raise HTTPException(403,"Teacher is not assigned to the selected child")
+    row=CommunicationMessage(tenant_id=user.tenant_id,sender_user_id=user.id,recipient_user_id=teacher.id,
+                             student_user_id=student.id,subject=payload.subject.strip(),body=payload.body.strip())
+    db.add(row); audit(db,user,"MESSAGE","Communication",payload.subject.strip()); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status,"created_at":row.created_at}
+
 @app.get("/api/v1/teacher/communication/recipients")
 def teacher_communication_recipients(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     unit_ids=_assigned_unit_ids(db,user)

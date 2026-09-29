@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -728,6 +728,36 @@ def _students_for_unit(db:Session,tenant_id:int,unit_id:int):
         User.is_active==True,
     )).all()
     return set(students)
+
+@app.get("/api/v1/teacher/notes")
+def teacher_notes(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(TeacherNote).where(
+        TeacherNote.tenant_id==user.tenant_id,
+        TeacherNote.teacher_user_id==user.id,
+    ).order_by(TeacherNote.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        student=db.get(User,row.student_user_id)
+        unit=db.get(AcademicUnit,row.unit_id) if row.unit_id else None
+        if not student or student.tenant_id!=user.tenant_id: continue
+        result.append({"id":row.id,"student_user_id":student.id,"student_name":student.name,
+                       "unit_id":row.unit_id,"unit_name":unit.name if unit and unit.tenant_id==user.tenant_id else None,
+                       "subject":row.subject,"note":row.note,"visibility":row.visibility,"created_at":row.created_at})
+    return result
+
+@app.post("/api/v1/teacher/notes")
+def create_teacher_note(payload:TeacherNoteIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    classes=_assigned_unit_ids(db,user)
+    student_units=[x for x in classes if payload.student_user_id in _students_for_unit(db,user.tenant_id,x)]
+    if not student_units: raise HTTPException(403,"Student is not enrolled in one of your assigned classes")
+    if payload.unit_id is not None and payload.unit_id not in student_units:
+        raise HTTPException(403,"Selected class does not contain this student")
+    visibility=payload.visibility.strip().upper()
+    if visibility not in {"PRIVATE","STUDENT","GUARDIAN"}: raise HTTPException(400,"Invalid note visibility")
+    row=TeacherNote(tenant_id=user.tenant_id,teacher_user_id=user.id,student_user_id=payload.student_user_id,
+                    unit_id=payload.unit_id,subject=payload.subject.strip(),note=payload.note.strip(),visibility=visibility)
+    db.add(row); audit(db,user,"CREATE","Teacher Notes",payload.subject.strip()); db.commit(); db.refresh(row)
+    return {"id":row.id,"subject":row.subject,"visibility":row.visibility,"created_at":row.created_at}
 
 @app.get("/api/v1/academic-work")
 def list_academic_work(work_type:Optional[str]=None,user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):

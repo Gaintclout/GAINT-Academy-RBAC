@@ -2153,6 +2153,32 @@ def auditor_compliance(user:User=Depends(require_roles("Auditor")),db:Session=De
     ]
     return {"summary":{"total":len(checks),"pass":sum(x["status"]=="PASS" for x in checks),"review":sum(x["status"]=="REVIEW" for x in checks)},"checks":checks}
 
+@app.get("/api/v1/auditor/exceptions")
+def auditor_exceptions(user:User=Depends(require_roles("Auditor")),db:Session=Depends(get_db)):
+    items=[]
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id)).all()
+    for x in grievances:
+        if x.status in {"Open","In Progress"} and x.priority in {"High","Urgent"}:
+            items.append({"type":"GRIEVANCE","severity":"HIGH" if x.priority=="Urgent" else "MEDIUM","reference":x.ticket_no,"title":x.subject,"status":x.status,"detail":f"{x.priority} priority grievance remains unresolved.","created_at":x.created_at})
+    documents=db.scalars(select(StaffDocument).where(StaffDocument.tenant_id==user.tenant_id)).all()
+    for x in documents:
+        if x.status in {"PENDING","EXPIRED"}:
+            items.append({"type":"STAFF_DOCUMENT","severity":"HIGH" if x.status=="EXPIRED" else "MEDIUM","reference":str(x.id),"title":x.title,"status":x.status,"detail":f"{x.document_type} requires HR review.","created_at":x.created_at})
+    leave=db.scalars(select(TeacherLeaveRequest).where(TeacherLeaveRequest.tenant_id==user.tenant_id,TeacherLeaveRequest.status=="PENDING")).all()
+    for x in leave:
+        items.append({"type":"LEAVE","severity":"LOW","reference":str(x.id),"title":x.leave_type,"status":x.status,"detail":"Teacher leave request is awaiting authorized review.","created_at":x.created_at})
+    inventory=db.scalars(select(CampusInventoryItem).where(CampusInventoryItem.tenant_id==user.tenant_id)).all()
+    for x in inventory:
+        if x.quantity<=x.minimum_quantity:
+            items.append({"type":"INVENTORY","severity":"MEDIUM","reference":str(x.id),"title":x.name,"status":"LOW_STOCK","detail":f"Quantity {x.quantity} is at or below minimum {x.minimum_quantity}.","created_at":x.updated_at})
+    assets=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id)).all()
+    for x in assets:
+        if x.condition in {"DAMAGED","REPAIR"}:
+            items.append({"type":"ASSET","severity":"HIGH" if x.condition=="DAMAGED" else "MEDIUM","reference":x.asset_code,"title":x.name,"status":x.condition,"detail":"Asset condition requires operational attention.","created_at":x.updated_at})
+    rank={"HIGH":0,"MEDIUM":1,"LOW":2}
+    items.sort(key=lambda x:(rank.get(x["severity"],9),-(x["created_at"].timestamp() if x["created_at"] else 0)))
+    return {"summary":{"total":len(items),"high":sum(x["severity"]=="HIGH" for x in items),"medium":sum(x["severity"]=="MEDIUM" for x in items),"low":sum(x["severity"]=="LOW" for x in items)},"exceptions":items[:200]}
+
 @app.get("/api/v1/audit")
 def audits(
     user:User=Depends(require_roles("Institution Admin","Campus Admin","Auditor")),

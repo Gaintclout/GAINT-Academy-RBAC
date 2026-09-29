@@ -309,3 +309,14 @@ class CampusAssetUpdate(BaseModel):
     condition: str = "GOOD"
     status: str = "ACTIVE"
     notes: str = Field(default="", max_length=1000)
+
+
+class CampusEventIn(BaseModel):
+    title: str = Field(min_length=2, max_length=180)
+    event_type: str = Field(default="General", max_length=60)
+    venue: str = Field(default="", max_length=180)
+    starts_at: str
+    ends_at: str
+    audience_role: str = "ALL"
+    registration_required: bool = False
+    registration_deadline: Optional[str] = None

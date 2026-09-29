@@ -97,6 +97,42 @@ function StudentProfile({ user, ui }) {
   </>;
 }
 
+function StudentTransport() {
+  const [transport, setTransport] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.get("/api/v1/student/transport")
+      .then((response) => { setTransport(response.data); setError(""); })
+      .catch((e) => setError(e?.response?.data?.detail || "Unable to load transport allocation."));
+  }, []);
+
+  if (error) return <div className="error">{error}</div>;
+  if (!transport) return <section className="panel">Loading transport allocation...</section>;
+  if (!transport.allocated) return <EmptyTable columns={MODULES.Transport.columns} message={MODULES.Transport.empty} />;
+
+  const vehicle = transport.vehicle
+    ? [transport.vehicle.vehicle_number, transport.vehicle.label].filter(Boolean).join(" — ")
+    : "—";
+  return <section className="panel structure-table">
+    <div className="panel-title"><b>Transport Allocation</b><span>Live</span></div>
+    <div className="table-scroll">
+      <table>
+        <thead><tr>{MODULES.Transport.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+        <tbody><tr>
+          <td><b>{transport.route?.name || "—"}</b>{transport.route?.code ? " (" + transport.route.code + ")" : ""}</td>
+          <td>{vehicle}</td>
+          <td>{transport.stop?.name || "—"}</td>
+          <td>{transport.pickup_time || "—"}</td>
+          <td>{transport.drop_time || "—"}</td>
+          <td>{transport.status || "—"}</td>
+        </tr></tbody>
+      </table>
+    </div>
+  </section>;
+}
+
+
 export default function StudentAcademicModule({ title, ui, user }) {
   const config = MODULES[title];
   const [details, setDetails] = useState("");
@@ -142,7 +178,7 @@ export default function StudentAcademicModule({ title, ui, user }) {
     {error && <div className="error">{error}</div>}
     {message && <div className="success">{message}</div>}
 
-    {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : <>
+    {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : title === "Transport" ? <StudentTransport /> : <>
       {title === "Grievance" && <section className="panel">
         <div className="panel-title"><b>Raise Grievance</b><span>Student Support</span></div>
         <label>Details</label>

@@ -24,6 +24,7 @@ import CampusEvents from "./CampusEvents";
 import CampusGrievance from "./CampusGrievance";
 import CampusReports from "./CampusReports";
 import Audit from "./Audit";
+import AuditorDashboard from "./AuditorDashboard";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
@@ -213,6 +214,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <LiveSafetyMap />;
   } else if (user.role === "Student" && active === "My Safety") {
     content = <StudentSafety />;
+  } else if (user.role === "Auditor" && active === "Dashboard") {
+    content = <AuditorDashboard ui={ui} />;
   } else if ((user.role === "Auditor" && active === "Audit Trail") || (user.role === "Institution Admin" && active === "Audit")) {
     content = <Audit />;
   } else {

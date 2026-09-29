@@ -177,3 +177,11 @@ class GrievanceIn(BaseModel):
     subject: str
     details: str
     priority: str = "Normal"
+
+
+class TeacherNoteIn(BaseModel):
+    student_user_id: int
+    unit_id: Optional[int] = None
+    subject: str = Field(min_length=2, max_length=180)
+    note: str = Field(min_length=1)
+    visibility: str = "PRIVATE"

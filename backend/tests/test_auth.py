@@ -330,3 +330,50 @@ def test_student_grievance_create_list_and_rbac():
     assert client.post("/api/v1/student/grievances",headers=student_headers,json={
         "category":"Academic","subject":"","details":"","priority":"Normal"
     }).status_code==400
+
+
+def test_teacher_self_service_modules_are_role_protected():
+    teacher=_login("teacher@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    for path in ("/api/v1/teacher/notes","/api/v1/teacher/communication","/api/v1/teacher/communication/recipients","/api/v1/teacher/events","/api/v1/teacher/leave"):
+        response=client.get(path,headers=teacher)
+        assert response.status_code==200, response.text
+        assert client.get(path,headers=student).status_code==403
+
+
+def test_teacher_leave_validation_and_self_service():
+    teacher=_login("teacher@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    created=client.post("/api/v1/teacher/leave",headers=teacher,json={
+        "leave_type":"Casual","start_date":"2026-10-10","end_date":"2026-10-11","reason":"Personal work"
+    })
+    assert created.status_code==200, created.text
+    leave_id=created.json()["id"]
+    rows=client.get("/api/v1/teacher/leave",headers=teacher)
+    assert rows.status_code==200
+    assert any(x["id"]==leave_id for x in rows.json())
+    assert client.post("/api/v1/teacher/leave",headers=teacher,json={
+        "leave_type":"Casual","start_date":"2026-10-12","end_date":"2026-10-11","reason":"Invalid dates"
+    }).status_code==400
+    assert client.post("/api/v1/teacher/leave",headers=student,json={
+        "leave_type":"Casual","start_date":"2026-10-10","end_date":"2026-10-11","reason":"Blocked"
+    }).status_code==403
+
+
+def test_teacher_notes_and_communication_reject_unassigned_student():
+    teacher=_login("teacher@gaintacademy.com")
+    admin=_login("admin@gaintacademy.com")
+    users=client.get("/api/v1/users",headers=admin).json()
+    student=next(x for x in users if x["role"]=="Student")
+    roster=client.get("/api/v1/teacher-roster",headers=teacher)
+    assert roster.status_code==200
+    assigned={x["student_user_id"] for x in roster.json().get("students",[])}
+    if student["id"] not in assigned:
+        note=client.post("/api/v1/teacher/notes",headers=teacher,json={
+            "student_user_id":student["id"],"subject":"Blocked note","note":"Must not be accepted","visibility":"PRIVATE"
+        })
+        assert note.status_code==403
+        message=client.post("/api/v1/teacher/communication",headers=teacher,json={
+            "recipient_user_id":student["id"],"student_user_id":student["id"],"subject":"Blocked message","body":"Must not be accepted"
+        })
+        assert message.status_code==403

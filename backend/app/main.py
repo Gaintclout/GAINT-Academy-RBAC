@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -728,6 +728,66 @@ def _students_for_unit(db:Session,tenant_id:int,unit_id:int):
         User.is_active==True,
     )).all()
     return set(students)
+
+@app.get("/api/v1/teacher/communication/recipients")
+def teacher_communication_recipients(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    unit_ids=_assigned_unit_ids(db,user)
+    student_ids=set()
+    for unit_id in unit_ids:
+        student_ids.update(_students_for_unit(db,user.tenant_id,unit_id))
+    rows=[]
+    for sid in sorted(student_ids):
+        student=db.get(User,sid)
+        if not student or student.tenant_id!=user.tenant_id: continue
+        rows.append({"user_id":student.id,"name":student.name,"role":"Student","student_user_id":student.id})
+        links=db.scalars(select(ParentStudentLink).where(
+            ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.student_user_id==sid
+        )).all()
+        for link in links:
+            parent=db.get(User,link.parent_user_id)
+            if parent and parent.tenant_id==user.tenant_id:
+                rows.append({"user_id":parent.id,"name":parent.name,"role":"Parent / Guardian","student_user_id":sid,"student_name":student.name})
+    return rows
+
+@app.get("/api/v1/teacher/communication")
+def teacher_communication(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(CommunicationMessage).where(
+        CommunicationMessage.tenant_id==user.tenant_id,
+        CommunicationMessage.sender_user_id==user.id,
+    ).order_by(CommunicationMessage.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        recipient=db.get(User,row.recipient_user_id)
+        student=db.get(User,row.student_user_id) if row.student_user_id else None
+        result.append({"id":row.id,"recipient":recipient.name if recipient and recipient.tenant_id==user.tenant_id else "Unknown",
+                       "recipient_role":recipient.role if recipient and recipient.tenant_id==user.tenant_id else "",
+                       "student_name":student.name if student and student.tenant_id==user.tenant_id else None,
+                       "subject":row.subject,"body":row.body,"status":row.status,"created_at":row.created_at})
+    return result
+
+@app.post("/api/v1/teacher/communication")
+def send_teacher_communication(payload:TeacherMessageIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    recipient=db.get(User,payload.recipient_user_id)
+    if not recipient or recipient.tenant_id!=user.tenant_id or recipient.role not in ("Student","Parent / Guardian"):
+        raise HTTPException(404,"Recipient not available")
+    unit_ids=_assigned_unit_ids(db,user)
+    allowed_students=set()
+    for unit_id in unit_ids: allowed_students.update(_students_for_unit(db,user.tenant_id,unit_id))
+    context_student=payload.student_user_id
+    if recipient.role=="Student":
+        context_student=recipient.id
+        if recipient.id not in allowed_students: raise HTTPException(403,"Student is not in your assigned classes")
+    else:
+        if not context_student or context_student not in allowed_students: raise HTTPException(403,"Guardian communication requires one of your students")
+        link=db.scalar(select(ParentStudentLink.id).where(
+            ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.parent_user_id==recipient.id,
+            ParentStudentLink.student_user_id==context_student
+        ))
+        if not link: raise HTTPException(403,"Guardian is not linked to the selected student")
+    row=CommunicationMessage(tenant_id=user.tenant_id,sender_user_id=user.id,recipient_user_id=recipient.id,
+                             student_user_id=context_student,subject=payload.subject.strip(),body=payload.body.strip())
+    db.add(row); audit(db,user,"MESSAGE","Communication",payload.subject.strip()); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status,"created_at":row.created_at}
 
 @app.get("/api/v1/teacher/notes")
 def teacher_notes(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):

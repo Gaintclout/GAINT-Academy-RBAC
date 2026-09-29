@@ -271,3 +271,16 @@ def test_teacher_assignment_management_rbac_and_validation():
     if course:
         invalid=client.post("/api/v1/academic-assignments",headers=admin,json={"user_id":student["id"],"unit_id":course["id"],"assignment_type":"FACULTY_ASSIGNMENT","status":"Active"})
         assert invalid.status_code==400
+
+
+def test_student_profile_is_self_scoped_and_student_only():
+    student_headers=_login("student@gaintacademy.com")
+    teacher_headers=_login("teacher@gaintacademy.com")
+    profile=client.get("/api/v1/student/profile",headers=student_headers)
+    assert profile.status_code==200, profile.text
+    data=profile.json()
+    assert data["email"]=="student@gaintacademy.com"
+    assert data["status"] in ("Active","Withdrawn")
+    assert isinstance(data["academics"],list)
+    assert isinstance(data["guardians"],list)
+    assert client.get("/api/v1/student/profile",headers=teacher_headers).status_code==403

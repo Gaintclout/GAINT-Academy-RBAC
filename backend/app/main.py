@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -1479,6 +1479,25 @@ def create_finance_refund(payload:FeeRefundIn,user:User=Depends(require_roles("A
     ledger.status="PAID" if ledger.amount_paid>=ledger.amount_due else ("PARTIAL" if ledger.amount_paid>0 else "DUE")
     db.add(row); audit(db,user,"REFUND","fee_ledger",f"ledger={ledger.id};payment={payment.id};amount={amount}"); db.commit(); db.refresh(row)
     return {"id":row.id,"amount":float(row.amount),"status":row.status}
+
+@app.get("/api/v1/finance/reconciliations")
+def finance_reconciliations(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(FinanceReconciliation).where(FinanceReconciliation.tenant_id==user.tenant_id).order_by(FinanceReconciliation.reconciliation_date.desc())).all()
+    return [{"id":x.id,"reconciliation_date":x.reconciliation_date,"expected_amount":float(x.expected_amount),"bank_amount":float(x.bank_amount),"difference":float(x.difference),"reference":x.reference,"notes":x.notes,"status":x.status,"created_at":x.created_at} for x in rows]
+
+@app.post("/api/v1/finance/reconciliations")
+def create_finance_reconciliation(payload:FinanceReconciliationIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    try: day=dt.datetime.fromisoformat(payload.reconciliation_date)
+    except ValueError: raise HTTPException(400,"Invalid reconciliation date")
+    start=day.replace(hour=0,minute=0,second=0,microsecond=0); end=start+dt.timedelta(days=1)
+    payments=db.scalar(select(func.coalesce(func.sum(FeePayment.amount),0)).where(FeePayment.tenant_id==user.tenant_id,FeePayment.paid_at>=start,FeePayment.paid_at<end))
+    refunds=db.scalar(select(func.coalesce(func.sum(FeeRefund.amount),0)).where(FeeRefund.tenant_id==user.tenant_id,FeeRefund.created_at>=start,FeeRefund.created_at<end))
+    expected=Decimal(str(payments or 0))-Decimal(str(refunds or 0)); bank=Decimal(str(payload.bank_amount)).quantize(Decimal("0.01")); difference=bank-expected
+    reference=payload.reference.strip()
+    if reference and db.scalar(select(FinanceReconciliation).where(FinanceReconciliation.tenant_id==user.tenant_id,FinanceReconciliation.reference==reference)): raise HTTPException(409,"This reconciliation reference has already been recorded")
+    row=FinanceReconciliation(tenant_id=user.tenant_id,reconciliation_date=start,expected_amount=expected,bank_amount=bank,difference=difference,reference=reference,notes=payload.notes.strip(),status="MATCHED" if difference==0 else "VARIANCE",recorded_by=user.id)
+    db.add(row); audit(db,user,"RECONCILE","finance",f"date={start.date()};expected={expected};bank={bank};difference={difference}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"expected_amount":float(row.expected_amount),"bank_amount":float(row.bank_amount),"difference":float(row.difference),"status":row.status}
 
 @app.get("/api/v1/finance/payments")
 def finance_payments(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):

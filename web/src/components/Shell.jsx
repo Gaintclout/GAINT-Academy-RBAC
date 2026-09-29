@@ -19,6 +19,7 @@ import StudentFinance from "./StudentFinance";
 import AccountsFinance from "./AccountsFinance";
 import AccountsDashboard from "./AccountsDashboard";
 import AccountsConcessions from "./AccountsConcessions";
+import AccountsRefunds from "./AccountsRefunds";
 import StudentAcademicModule from "./StudentAcademicModule";
 import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import AdaptiveRoleModule from "./AdaptiveRoleModule";
@@ -98,6 +99,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <UsersRoles currentUser={user} />;
   } else if (user.role === "Institution Admin" && active === "Parent ↔ Student Links") {
     content = <ParentStudentLinks />;
+  } else if (user.role === "Accounts" && active === "Refunds") {
+    content = <AccountsRefunds ui={ui} />;
   } else if (user.role === "Accounts" && active === "Concessions") {
     content = <AccountsConcessions ui={ui} />;
   } else if (user.role === "Accounts" && ["Fees","Payments","Receipts","Finance Reports"].includes(active)) {

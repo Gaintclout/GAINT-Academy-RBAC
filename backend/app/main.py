@@ -286,6 +286,46 @@ def admission_student_profile(student_id:int,user:User=Depends(require_roles("In
     history_count=db.scalar(select(func.count(EnrollmentHistory.id)).where(EnrollmentHistory.tenant_id==user.tenant_id,EnrollmentHistory.student_user_id==student.id)) or 0
     return {"id":student.id,"name":student.name,"email":student.email,"campus_id":student.campus_id,"status":"Active" if student.is_active else "Withdrawn","academics":academics,"guardians":guardians,"history_count":history_count}
 
+@app.get("/api/v1/student/profile")
+def student_profile(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    assignments=db.scalars(select(AcademicAssignment).where(
+        AcademicAssignment.tenant_id==user.tenant_id,
+        AcademicAssignment.user_id==user.id,
+        AcademicAssignment.status=="Active",
+    )).all()
+    academics=[]
+    for row in assignments:
+        unit=db.get(AcademicUnit,row.unit_id)
+        if unit and unit.tenant_id==user.tenant_id:
+            academics.append({
+                "assignment_type":row.assignment_type,
+                "unit_id":unit.id,
+                "unit_name":unit.name,
+                "unit_code":unit.code,
+                "unit_type":unit.unit_type,
+            })
+    links=db.scalars(select(ParentStudentLink).where(
+        ParentStudentLink.tenant_id==user.tenant_id,
+        ParentStudentLink.student_user_id==user.id,
+    )).all()
+    guardians=[]
+    for link in links:
+        parent=db.get(User,link.parent_user_id)
+        if parent and parent.tenant_id==user.tenant_id:
+            guardians.append({
+                "name":parent.name,
+                "relationship":link.relationship,
+            })
+    return {
+        "id":user.id,
+        "name":user.name,
+        "email":user.email,
+        "campus_id":user.campus_id,
+        "status":"Active" if user.is_active else "Withdrawn",
+        "academics":academics,
+        "guardians":guardians,
+    }
+
 @app.get("/api/v1/admissions/students/{student_id}/history")
 def admission_history(student_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     student=db.get(User,student_id)

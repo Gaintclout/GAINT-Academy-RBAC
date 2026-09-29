@@ -8,6 +8,7 @@ import ParentTransport from "./ParentTransport";
 import ParentMessages from "./ParentMessages";
 import ParentEvents from "./ParentEvents";
 import ParentGrievance from "./ParentGrievance";
+import ParentLeave from "./ParentLeave";
 import ParentAcademics from "./ParentAcademics";
 import ParentChildrenFinance from "./ParentChildrenFinance";
 import LiveSafetyMap from "./LiveSafetyMap";
@@ -131,6 +132,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <ParentChildrenFinance title={active} ui={ui} />;
   } else if (user.role === "Parent / Guardian" && ["Attendance","Homework","Results"].includes(active)) {
     content = <ParentAcademics title={active} ui={ui} />;
+  } else if (user.role === "Parent / Guardian" && active === "Leave Request") {
+    content = <ParentLeave ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Grievance") {
     content = <ParentGrievance ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Events") {

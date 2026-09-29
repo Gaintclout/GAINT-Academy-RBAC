@@ -423,13 +423,10 @@ def test_parent_leave_rejects_unlinked_student_and_invalid_dates():
             "student_user_id":child_id,"leave_type":"Sick",
             "start_date":"2026-10-10","end_date":"2026-10-09","reason":"Medical rest"})
         assert bad.status_code==400
-    users=client.get("/api/v1/admin/users",headers=_login("admin@gaintacademy.com")).json()
-    unlinked=next((x for x in users if x["role"]=="Student" and all(x["id"]!=y["id"] for y in children)),None)
-    if unlinked:
-        response=client.post("/api/v1/parents/leave",headers=parent,json={
-            "student_user_id":unlinked["id"],"leave_type":"Casual",
-            "start_date":"2026-10-10","end_date":"2026-10-11","reason":"Family reason"})
-        assert response.status_code==403
+    response=client.post("/api/v1/parents/leave",headers=parent,json={
+        "student_user_id":999999,"leave_type":"Casual",
+        "start_date":"2026-10-10","end_date":"2026-10-11","reason":"Family reason"})
+    assert response.status_code==403
 
 
 def test_parent_message_rejects_invalid_teacher_context():

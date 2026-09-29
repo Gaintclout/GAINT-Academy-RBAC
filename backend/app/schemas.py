@@ -179,6 +179,13 @@ class GrievanceIn(BaseModel):
     priority: str = "Normal"
 
 
+class ParentStudentLeaveIn(BaseModel):
+    student_user_id: int
+    leave_type: str = Field(default="Casual", min_length=2, max_length=60)
+    start_date: str
+    end_date: str
+    reason: str = Field(min_length=2)
+
 class TeacherNoteIn(BaseModel):
     student_user_id: int
     unit_id: Optional[int] = None

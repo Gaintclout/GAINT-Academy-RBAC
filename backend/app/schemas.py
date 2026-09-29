@@ -274,3 +274,19 @@ class CampusVisitorIn(BaseModel):
 
 class CampusVisitorStatusIn(BaseModel):
     status: str
+
+
+class CampusInventoryIn(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    category: str = Field(default="General", max_length=80)
+    item_code: str = Field(default="", max_length=60)
+    quantity: int = Field(default=0, ge=0)
+    minimum_quantity: int = Field(default=0, ge=0)
+    location: str = Field(default="", max_length=120)
+    status: str = "ACTIVE"
+    notes: str = Field(default="", max_length=1000)
+
+class CampusInventoryUpdate(BaseModel):
+    quantity: int = Field(ge=0)
+    status: str = "ACTIVE"
+    notes: str = Field(default="", max_length=1000)

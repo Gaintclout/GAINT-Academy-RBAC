@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration
 from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
@@ -325,6 +325,35 @@ def student_profile(user:User=Depends(require_roles("Student")),db:Session=Depen
         "academics":academics,
         "guardians":guardians,
     }
+
+@app.get("/api/v1/student/events")
+def student_events(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    events=db.scalars(select(AcademyEvent).where(
+        AcademyEvent.tenant_id==user.tenant_id,
+        AcademyEvent.status=="Published",
+    ).order_by(AcademyEvent.starts_at.asc())).all()
+    result=[]
+    for event in events:
+        if event.campus_id is not None and event.campus_id!=user.campus_id:
+            continue
+        if event.audience_role not in ("ALL","Student"):
+            continue
+        organizer=db.get(User,event.organizer_user_id) if event.organizer_user_id else None
+        registration=db.scalar(select(EventRegistration).where(
+            EventRegistration.tenant_id==user.tenant_id,
+            EventRegistration.event_id==event.id,
+            EventRegistration.user_id==user.id,
+        ))
+        result.append({
+            "id":event.id,"title":event.title,"event_type":event.event_type,
+            "venue":event.venue,"starts_at":event.starts_at,"ends_at":event.ends_at,
+            "organizer":organizer.name if organizer and organizer.tenant_id==user.tenant_id else None,
+            "registration_required":event.registration_required,
+            "registration_deadline":event.registration_deadline,
+            "registration_status":registration.status if registration else ("Not Registered" if event.registration_required else "Not Required"),
+            "status":event.status,
+        })
+    return result
 
 @app.get("/api/v1/student/library")
 def student_library(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):

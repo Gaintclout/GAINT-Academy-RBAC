@@ -1366,6 +1366,52 @@ def fee_receipts(ledger_id:int,user:User=Depends(current_user),db:Session=Depend
     rows=db.scalars(select(FeePayment).where(FeePayment.ledger_id==ledger_id,FeePayment.tenant_id==user.tenant_id).order_by(FeePayment.paid_at.desc())).all()
     return [{"id":x.id,"amount":x.amount,"reference":x.reference,"receipt_no":x.receipt_no,"paid_at":x.paid_at} for x in rows]
 
+@app.get("/api/v1/parents/dashboard")
+def parent_dashboard(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    children=parent_children(user,db)
+    result=[]
+    total_balance=0.0
+    for child in children:
+        student_id=child["id"]
+        fee_rows=db.scalars(select(FeeLedger).where(
+            FeeLedger.tenant_id==user.tenant_id,FeeLedger.student_user_id==student_id,
+            FeeLedger.status!="CANCELLED",
+        )).all()
+        balance=sum(float(max(0,x.amount_due-x.amount_paid)) for x in fee_rows)
+        total_balance+=balance
+        unit_ids=_assigned_unit_ids(db,db.get(User,student_id))
+        sessions=db.scalars(select(ClassSession).where(
+            ClassSession.tenant_id==user.tenant_id,
+            ClassSession.unit_id.in_(unit_ids) if unit_ids else False,
+        )).all() if unit_ids else []
+        marked=present=0
+        for session in sessions:
+            entry=db.scalar(select(AttendanceEntry).where(
+                AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==student_id))
+            if entry and entry.status!="UNMARKED":
+                marked+=1
+                if entry.status in ("PRESENT","LATE"): present+=1
+        result.append({**child,"fee_balance":balance,"attendance_percentage":round(present*100/marked,1) if marked else None})
+    return {"children":result,"linked_children":len(result),"total_fee_balance":round(total_balance,2)}
+
+@app.get("/api/v1/parents/children/{student_id}/transport")
+def parent_child_transport(student_id:int,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    student=_linked_child(db,user,student_id)
+    allocation=db.scalar(select(StudentTransportAllocation).where(
+        StudentTransportAllocation.tenant_id==user.tenant_id,
+        StudentTransportAllocation.student_user_id==student.id,
+        StudentTransportAllocation.status=="Active",
+    ))
+    if not allocation: return {"student":{"id":student.id,"name":student.name},"allocated":False}
+    route=db.get(TransportRoute,allocation.route_id)
+    vehicle=db.get(TransportVehicle,allocation.vehicle_id) if allocation.vehicle_id else None
+    stop=db.get(TransportStop,allocation.stop_id) if allocation.stop_id else None
+    return {"student":{"id":student.id,"name":student.name},"allocated":True,
+            "route":{"id":route.id,"name":route.name,"code":route.code} if route and route.tenant_id==user.tenant_id else None,
+            "vehicle":{"id":vehicle.id,"vehicle_number":vehicle.vehicle_number,"label":vehicle.label} if vehicle and vehicle.tenant_id==user.tenant_id else None,
+            "stop":{"id":stop.id,"name":stop.name,"pickup_time":stop.pickup_time,"drop_time":stop.drop_time} if stop and stop.tenant_id==user.tenant_id else None,
+            "status":allocation.status}
+
 @app.get("/api/v1/parents/children/{student_id}/fees")
 def parent_child_fees(student_id:int,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
     student=_linked_child(db,user,student_id)

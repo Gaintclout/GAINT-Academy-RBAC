@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -843,6 +843,22 @@ def campus_event_create(payload:CampusEventIn,user:User=Depends(require_roles("C
     row=AcademyEvent(tenant_id=user.tenant_id,campus_id=user.campus_id,title=payload.title,event_type=payload.event_type,venue=payload.venue,starts_at=starts,ends_at=ends,organizer_user_id=user.id,audience_role=payload.audience_role,registration_required=payload.registration_required,registration_deadline=deadline,status="Published")
     db.add(row); audit(db,user,"EVENT_CREATE","campus_event",payload.title); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
+
+@app.get("/api/v1/campus/grievances")
+def campus_grievances(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id,Grievance.campus_id==user.campus_id).order_by(Grievance.created_at.desc())).all()
+    creators={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id)).all()}
+    return [{"id":x.id,"ticket_no":x.ticket_no,"creator_name":creators[x.created_by_user_id].name if x.created_by_user_id in creators else "User","category":x.category,"subject":x.subject,"details":x.details,"priority":x.priority,"status":x.status,"latest_update":x.latest_update,"created_at":x.created_at,"updated_at":x.updated_at} for x in rows]
+
+@app.patch("/api/v1/campus/grievances/{grievance_id}")
+def campus_grievance_update(grievance_id:int,payload:CampusGrievanceUpdateIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(Grievance).where(Grievance.id==grievance_id,Grievance.tenant_id==user.tenant_id,Grievance.campus_id==user.campus_id))
+    if not row: raise HTTPException(404,"Grievance not found")
+    status=payload.status.strip().title()
+    if status not in {"Open","In Progress","Resolved","Closed"}: raise HTTPException(400,"Invalid grievance status")
+    row.status=status; row.latest_update=payload.latest_update.strip(); row.updated_at=dt.datetime.utcnow()
+    audit(db,user,"GRIEVANCE_UPDATE",f"grievance:{row.id}",f"ticket={row.ticket_no};status={status}"); db.commit()
+    return {"id":row.id,"ticket_no":row.ticket_no,"status":row.status,"latest_update":row.latest_update}
 
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

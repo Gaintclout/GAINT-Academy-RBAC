@@ -5,6 +5,7 @@ import RoleModule from "./RoleModule";
 import ParentTracking from "./ParentTracking";
 import ParentDashboard from "./ParentDashboard";
 import ParentTransport from "./ParentTransport";
+import ParentMessages from "./ParentMessages";
 import ParentAcademics from "./ParentAcademics";
 import ParentChildrenFinance from "./ParentChildrenFinance";
 import LiveSafetyMap from "./LiveSafetyMap";
@@ -128,6 +129,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <ParentChildrenFinance title={active} ui={ui} />;
   } else if (user.role === "Parent / Guardian" && ["Attendance","Homework","Results"].includes(active)) {
     content = <ParentAcademics title={active} ui={ui} />;
+  } else if (user.role === "Parent / Guardian" && active === "Messages") {
+    content = <ParentMessages ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Transport") {
     content = <ParentTransport ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Live Location") {

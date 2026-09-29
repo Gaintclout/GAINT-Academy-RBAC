@@ -109,7 +109,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
   } else if (user.role === "Teacher" && ["My Classes","My Students"].includes(active)) {
     content = <TeacherAcademicWorkspace title={active} ui={ui} />;
   } else if (user.role === "Student" && ["My Profile","Transport","Library","Events","Grievance"].includes(active)) {
-    content = <StudentAcademicModule title={active} ui={ui} />;
+    content = <StudentAcademicModule title={active} ui={ui} user={user} />;
   } else if (user.role === "Parent / Guardian" && ["My Children","Fees"].includes(active)) {
     content = <ParentChildrenFinance title={active} ui={ui} />;
   } else if (user.role === "Parent / Guardian" && ["Attendance","Homework","Results"].includes(active)) {

@@ -411,6 +411,20 @@ class FeeRefund(Base):
     recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class FinanceReconciliation(Base):
+    __tablename__ = "finance_reconciliations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    reconciliation_date: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    expected_amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    bank_amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    difference: Mapped[float] = mapped_column(Numeric(12, 2))
+    reference: Mapped[str] = mapped_column(String(100), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30))
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class FeePayment(Base):
     __tablename__ = "fee_payments"
     id: Mapped[int] = mapped_column(primary_key=True)

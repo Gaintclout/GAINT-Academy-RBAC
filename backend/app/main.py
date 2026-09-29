@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -354,6 +354,33 @@ def create_student_grievance(payload:GrievanceIn,user:User=Depends(require_roles
     return {"id":row.id,"ticket_no":row.ticket_no,"category":row.category,"subject":row.subject,
             "priority":row.priority,"status":row.status,"latest_update":row.latest_update,
             "created_at":row.created_at,"updated_at":row.updated_at}
+
+@app.get("/api/v1/teacher/leave")
+def teacher_leave_requests(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(TeacherLeaveRequest).where(
+        TeacherLeaveRequest.tenant_id==user.tenant_id,
+        TeacherLeaveRequest.teacher_user_id==user.id,
+    ).order_by(TeacherLeaveRequest.created_at.desc())).all()
+    return [{"id":x.id,"leave_type":x.leave_type,"start_date":x.start_date,"end_date":x.end_date,
+             "reason":x.reason,"status":x.status,"reviewer_note":x.reviewer_note,
+             "created_at":x.created_at,"updated_at":x.updated_at} for x in rows]
+
+@app.post("/api/v1/teacher/leave")
+def create_teacher_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    try:
+        start=dt.datetime.fromisoformat(payload.start_date)
+        end=dt.datetime.fromisoformat(payload.end_date)
+    except ValueError:
+        raise HTTPException(400,"Invalid leave date")
+    if end < start: raise HTTPException(400,"Leave end date cannot be before start date")
+    leave_type=payload.leave_type.strip().title()
+    if leave_type not in {"Casual","Sick","Earned","Emergency","Other"}:
+        raise HTTPException(400,"Invalid leave type")
+    row=TeacherLeaveRequest(tenant_id=user.tenant_id,teacher_user_id=user.id,leave_type=leave_type,
+                            start_date=start,end_date=end,reason=payload.reason.strip())
+    db.add(row); audit(db,user,"CREATE","Leave",leave_type); db.commit(); db.refresh(row)
+    return {"id":row.id,"leave_type":row.leave_type,"start_date":row.start_date,"end_date":row.end_date,
+            "reason":row.reason,"status":row.status,"reviewer_note":row.reviewer_note,"created_at":row.created_at}
 
 @app.get("/api/v1/teacher/events")
 def teacher_events(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):

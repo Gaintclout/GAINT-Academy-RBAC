@@ -70,6 +70,21 @@ class RecruitmentCandidate(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class StaffPerformanceReview(Base):
+    __tablename__ = "staff_performance_reviews"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    staff_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    review_period: Mapped[str] = mapped_column(String(80), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    strengths: Mapped[str] = mapped_column(Text, default="")
+    improvement_areas: Mapped[str] = mapped_column(Text, default="")
+    goals: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="COMPLETED")
+    reviewed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class ParentStudentLink(Base):
     __tablename__ = "parent_student_links"
     __table_args__ = (UniqueConstraint("parent_user_id","student_user_id", name="uq_parent_student"),)

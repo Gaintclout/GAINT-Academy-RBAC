@@ -486,3 +486,49 @@ def test_hr_attendance_and_performance_validate_staff_scope():
     assert client.post("/api/v1/hr/performance",headers=hr,json={
         "staff_user_id":teacher["id"],"review_period":"Q3 2026","rating":6
     }).status_code==422
+
+
+def test_campus_admin_endpoints_are_role_protected():
+    campus=_login("campus@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    read_paths=[
+        "/api/v1/campus/dashboard","/api/v1/campus/students","/api/v1/campus/staff",
+        "/api/v1/campus/attendance","/api/v1/campus/transport","/api/v1/campus/live-locations",
+        "/api/v1/campus/visitors","/api/v1/campus/inventory","/api/v1/campus/assets",
+        "/api/v1/campus/events","/api/v1/campus/grievances","/api/v1/campus/reports",
+    ]
+    for path in read_paths:
+        response=client.get(path,headers=campus)
+        assert response.status_code==200, f"{path}: {response.text}"
+        assert client.get(path,headers=student).status_code==403
+
+
+def test_campus_admin_write_endpoints_reject_other_roles_and_invalid_values():
+    campus=_login("campus@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    visitor={"name":"Campus Visitor","phone":"9999999999","purpose":"Meeting","person_to_meet":"Office"}
+    assert client.post("/api/v1/campus/visitors",headers=student,json=visitor).status_code==403
+    assert client.post("/api/v1/campus/inventory",headers=campus,json={
+        "name":"Invalid Stock","category":"General","quantity":1,"minimum_quantity":0,"status":"BROKEN"
+    }).status_code==400
+    assert client.post("/api/v1/campus/assets",headers=campus,json={
+        "asset_code":"TEST-BAD-CONDITION","name":"Test Asset","condition":"UNKNOWN","status":"ACTIVE"
+    }).status_code==400
+    assert client.post("/api/v1/campus/events",headers=campus,json={
+        "title":"Invalid Event","starts_at":"2026-10-10T12:00:00","ends_at":"2026-10-10T11:00:00",
+        "audience_role":"ALL"
+    }).status_code==400
+
+
+def test_campus_student_listing_is_campus_isolated():
+    admin=_login("admin@gaintacademy.com")
+    campus=_login("campus@gaintacademy.com")
+    created=client.post("/api/v1/users",headers=admin,json={
+        "name":"Other Campus Student","email":"campus.isolation@test.local",
+        "password":"Campus@123","role":"Student","campus_id":2
+    })
+    assert created.status_code in (200,409), created.text
+    rows=client.get("/api/v1/campus/students",headers=campus)
+    assert rows.status_code==200
+    assert all(x["campus_id"]==1 for x in rows.json())
+    assert not any(x["email"]=="campus.isolation@test.local" for x in rows.json())

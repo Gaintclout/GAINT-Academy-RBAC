@@ -49,6 +49,23 @@ class Record(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class Grievance(Base):
+    __tablename__ = "grievances"
+    __table_args__ = (UniqueConstraint("tenant_id","ticket_no", name="uq_grievance_ticket"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    ticket_no: Mapped[str] = mapped_column(String(40))
+    category: Mapped[str] = mapped_column(String(80), default="General")
+    subject: Mapped[str] = mapped_column(String(180))
+    details: Mapped[str] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(20), default="Normal")
+    status: Mapped[str] = mapped_column(String(30), default="Open")
+    latest_update: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class AcademyEvent(Base):
     __tablename__ = "academy_events"
     id: Mapped[int] = mapped_column(primary_key=True)

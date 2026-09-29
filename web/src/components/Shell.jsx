@@ -13,6 +13,7 @@ import ParentAcademics from "./ParentAcademics";
 import ParentChildrenFinance from "./ParentChildrenFinance";
 import LiveSafetyMap from "./LiveSafetyMap";
 import CampusDashboard from "./CampusDashboard";
+import CampusStudents from "./CampusStudents";
 import Audit from "./Audit";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
@@ -93,6 +94,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : user.role === "Parent / Guardian" ? <ParentDashboard ui={ui} /> : user.role === "Accounts" ? <AccountsDashboard ui={ui} /> : user.role === "HR" ? <HRDashboard ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Admissions") {
     content = <StudentEnrollment />;
+  } else if (user.role === "Campus Admin" && active === "Students") {
+    content = <CampusStudents ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Dashboard") {
     content = <CampusDashboard ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Students") {

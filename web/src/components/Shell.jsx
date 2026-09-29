@@ -21,6 +21,7 @@ import AccountsDashboard from "./AccountsDashboard";
 import AccountsConcessions from "./AccountsConcessions";
 import AccountsRefunds from "./AccountsRefunds";
 import AccountsReconciliation from "./AccountsReconciliation";
+import HRDashboard from "./HRDashboard";
 import StudentAcademicModule from "./StudentAcademicModule";
 import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import AdaptiveRoleModule from "./AdaptiveRoleModule";
@@ -81,7 +82,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
 
   let content;
   if (active === "Dashboard") {
-    content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : user.role === "Parent / Guardian" ? <ParentDashboard ui={ui} /> : user.role === "Accounts" ? <AccountsDashboard ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
+    content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : user.role === "Parent / Guardian" ? <ParentDashboard ui={ui} /> : user.role === "Accounts" ? <AccountsDashboard ui={ui} /> : user.role === "HR" ? <HRDashboard ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Admissions") {
     content = <StudentEnrollment />;
   } else if (user.role === "Institution Admin" && active === "Students") {

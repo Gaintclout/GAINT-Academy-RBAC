@@ -860,6 +860,31 @@ def campus_grievance_update(grievance_id:int,payload:CampusGrievanceUpdateIn,use
     audit(db,user,"GRIEVANCE_UPDATE",f"grievance:{row.id}",f"ticket={row.ticket_no};status={status}"); db.commit()
     return {"id":row.id,"ticket_no":row.ticket_no,"status":row.status,"latest_update":row.latest_update}
 
+@app.get("/api/v1/campus/reports")
+def campus_reports(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role=="Student")).all()
+    staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}
+    staff=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role.in_(staff_roles))).all()
+    student_ids={x.id for x in students}
+    attendance=db.scalars(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id)).all()
+    attendance=[x for x in attendance if x.student_user_id in student_ids]
+    routes=db.scalars(select(TransportRoute).where(TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==user.campus_id)).all()
+    vehicles=db.scalars(select(TransportVehicle).where(TransportVehicle.tenant_id==user.tenant_id,TransportVehicle.campus_id==user.campus_id)).all()
+    visitors=db.scalars(select(CampusVisitor).where(CampusVisitor.tenant_id==user.tenant_id,CampusVisitor.campus_id==user.campus_id)).all()
+    inventory=db.scalars(select(CampusInventoryItem).where(CampusInventoryItem.tenant_id==user.tenant_id,CampusInventoryItem.campus_id==user.campus_id)).all()
+    assets=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id,CampusAsset.campus_id==user.campus_id)).all()
+    events=db.scalars(select(AcademyEvent).where(AcademyEvent.tenant_id==user.tenant_id,AcademyEvent.campus_id==user.campus_id)).all()
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id,Grievance.campus_id==user.campus_id)).all()
+    return {"campus_id":user.campus_id,
+      "people":{"students":len(students),"active_students":sum(x.is_active for x in students),"staff":len(staff),"active_staff":sum(x.is_active for x in staff)},
+      "attendance":{"records":len(attendance),"present":sum(x.status=="PRESENT" for x in attendance),"absent":sum(x.status=="ABSENT" for x in attendance)},
+      "transport":{"routes":len(routes),"vehicles":len(vehicles)},
+      "visitors":{"total":len(visitors),"inside":sum(x.status=="CHECKED_IN" for x in visitors)},
+      "inventory":{"items":len(inventory),"low_stock":sum(x.quantity<=x.minimum_quantity for x in inventory)},
+      "assets":{"total":len(assets),"needs_attention":sum(x.condition in {"DAMAGED","REPAIR"} for x in assets)},
+      "events":{"total":len(events),"published":sum(x.status=="Published" for x in events)},
+      "grievances":{"total":len(grievances),"open":sum(x.status in {"Open","In Progress"} for x in grievances),"resolved":sum(x.status in {"Resolved","Closed"} for x in grievances)}}
+
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}

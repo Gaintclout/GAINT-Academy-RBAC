@@ -382,6 +382,30 @@ def create_teacher_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     return {"id":row.id,"leave_type":row.leave_type,"start_date":row.start_date,"end_date":row.end_date,
             "reason":row.reason,"status":row.status,"reviewer_note":row.reviewer_note,"created_at":row.created_at}
 
+@app.get("/api/v1/parents/events")
+def parent_events(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    links=db.scalars(select(ParentStudentLink).where(
+        ParentStudentLink.parent_user_id==user.id,ParentStudentLink.tenant_id==user.tenant_id)).all()
+    campus_ids=set()
+    for link in links:
+        student=db.get(User,link.student_user_id)
+        if student and student.tenant_id==user.tenant_id and student.campus_id is not None:
+            campus_ids.add(student.campus_id)
+    events=db.scalars(select(AcademyEvent).where(
+        AcademyEvent.tenant_id==user.tenant_id,AcademyEvent.status=="Published"
+    ).order_by(AcademyEvent.starts_at.asc())).all()
+    result=[]
+    for event in events:
+        if event.audience_role not in ("ALL","Parent / Guardian","Parent"): continue
+        if event.campus_id is not None and campus_ids and event.campus_id not in campus_ids: continue
+        organizer=db.get(User,event.organizer_user_id) if event.organizer_user_id else None
+        result.append({"id":event.id,"title":event.title,"event_type":event.event_type,"venue":event.venue,
+                       "starts_at":event.starts_at,"ends_at":event.ends_at,
+                       "organizer":organizer.name if organizer and organizer.tenant_id==user.tenant_id else None,
+                       "registration_required":event.registration_required,
+                       "registration_deadline":event.registration_deadline,"status":event.status})
+    return result
+
 @app.get("/api/v1/teacher/events")
 def teacher_events(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     events=db.scalars(select(AcademyEvent).where(

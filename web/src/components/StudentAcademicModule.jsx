@@ -22,7 +22,7 @@ const MODULES = {
   Events: {
     title: "Events",
     subtitle: "Events available to your student account.",
-    columns: ["Event", "Date", "Time", "Location", "Registration", "Status"],
+    columns: ["Event", "Type", "Date", "Time", "Venue", "Organizer", "Registration", "Status"],
     empty: "No events are currently available for your student account.",
   },
   Grievance: {
@@ -168,6 +168,44 @@ function StudentLibrary() {
 }
 
 
+function StudentEvents() {
+  const [events, setEvents] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.get("/api/v1/student/events")
+      .then((response) => { setEvents(response.data || []); setError(""); })
+      .catch((e) => setError(e?.response?.data?.detail || "Unable to load events."));
+  }, []);
+
+  if (error) return <div className="error">{error}</div>;
+  if (!events) return <section className="panel">Loading events...</section>;
+  if (!events.length) return <EmptyTable columns={MODULES.Events.columns} message={MODULES.Events.empty} />;
+
+  return <section className="panel structure-table">
+    <div className="panel-title"><b>Student Events</b><span>{events.length}</span></div>
+    <div className="table-scroll">
+      <table>
+        <thead><tr>{MODULES.Events.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+        <tbody>{events.map((event) => {
+          const starts = new Date(event.starts_at);
+          return <tr key={event.id}>
+            <td><b>{event.title}</b></td>
+            <td>{event.event_type || "—"}</td>
+            <td>{starts.toLocaleDateString()}</td>
+            <td>{starts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+            <td>{event.venue || "—"}</td>
+            <td>{event.organizer || "—"}</td>
+            <td>{event.registration_status || "—"}</td>
+            <td>{event.status || "—"}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>
+  </section>;
+}
+
+
 export default function StudentAcademicModule({ title, ui, user }) {
   const config = MODULES[title];
   const [details, setDetails] = useState("");
@@ -213,7 +251,7 @@ export default function StudentAcademicModule({ title, ui, user }) {
     {error && <div className="error">{error}</div>}
     {message && <div className="success">{message}</div>}
 
-    {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : title === "Transport" ? <StudentTransport /> : title === "Library" ? <StudentLibrary /> : <>
+    {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : title === "Transport" ? <StudentTransport /> : title === "Library" ? <StudentLibrary /> : title === "Events" ? <StudentEvents /> : <>
       {title === "Grievance" && <section className="panel">
         <div className="panel-title"><b>Raise Grievance</b><span>Student Support</span></div>
         <label>Details</label>

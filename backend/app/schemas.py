@@ -113,6 +113,11 @@ class FeeLedgerIn(BaseModel):
     amount_due: float = Field(gt=0)
     due_at: Optional[str] = None
 
+class FeeConcessionIn(BaseModel):
+    ledger_id: int = Field(ge=1)
+    amount: float = Field(gt=0)
+    reason: str = Field(min_length=2, max_length=1000)
+
 class FeePaymentIn(BaseModel):
     amount: float = Field(gt=0)
     reference: str = Field(default="", max_length=100)

@@ -133,6 +133,41 @@ function StudentTransport() {
 }
 
 
+function StudentLibrary() {
+  const [loans, setLoans] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.get("/api/v1/student/library")
+      .then((response) => { setLoans(response.data || []); setError(""); })
+      .catch((e) => setError(e?.response?.data?.detail || "Unable to load library loans."));
+  }, []);
+
+  if (error) return <div className="error">{error}</div>;
+  if (!loans) return <section className="panel">Loading library loans...</section>;
+  if (!loans.length) return <EmptyTable columns={MODULES.Library.columns} message={MODULES.Library.empty} />;
+
+  const dateText = (value) => value ? new Date(value).toLocaleDateString() : "—";
+  return <section className="panel structure-table">
+    <div className="panel-title"><b>My Library Loans</b><span>{loans.length}</span></div>
+    <div className="table-scroll">
+      <table>
+        <thead><tr>{MODULES.Library.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+        <tbody>{loans.map((loan) => <tr key={loan.loan_id}>
+          <td><b>{loan.book?.title || "—"}</b>{loan.book?.accession_no ? <div className="muted">{loan.book.accession_no}</div> : null}</td>
+          <td>{loan.book?.author || "—"}</td>
+          <td>{dateText(loan.issued_at)}</td>
+          <td>{dateText(loan.due_at)}</td>
+          <td>{dateText(loan.returned_at)}</td>
+          <td>₹{Number(loan.fine_amount || 0).toFixed(2)}</td>
+          <td>{loan.status || "—"}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+  </section>;
+}
+
+
 export default function StudentAcademicModule({ title, ui, user }) {
   const config = MODULES[title];
   const [details, setDetails] = useState("");
@@ -178,7 +213,7 @@ export default function StudentAcademicModule({ title, ui, user }) {
     {error && <div className="error">{error}</div>}
     {message && <div className="success">{message}</div>}
 
-    {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : title === "Transport" ? <StudentTransport /> : <>
+    {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : title === "Transport" ? <StudentTransport /> : title === "Library" ? <StudentLibrary /> : <>
       {title === "Grievance" && <section className="panel">
         <div className="panel-title"><b>Raise Grievance</b><span>Student Support</span></div>
         <label>Details</label>

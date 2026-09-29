@@ -3,6 +3,8 @@ import { api } from "../api";
 import Dashboard from "./Dashboard";
 import RoleModule from "./RoleModule";
 import ParentTracking from "./ParentTracking";
+import ParentDashboard from "./ParentDashboard";
+import ParentTransport from "./ParentTransport";
 import ParentAcademics from "./ParentAcademics";
 import ParentChildrenFinance from "./ParentChildrenFinance";
 import LiveSafetyMap from "./LiveSafetyMap";
@@ -71,7 +73,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
 
   let content;
   if (active === "Dashboard") {
-    content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
+    content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : user.role === "Parent / Guardian" ? <ParentDashboard ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Admissions") {
     content = <StudentEnrollment />;
   } else if (user.role === "Institution Admin" && active === "Students") {
@@ -126,6 +128,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <ParentChildrenFinance title={active} ui={ui} />;
   } else if (user.role === "Parent / Guardian" && ["Attendance","Homework","Results"].includes(active)) {
     content = <ParentAcademics title={active} ui={ui} />;
+  } else if (user.role === "Parent / Guardian" && active === "Transport") {
+    content = <ParentTransport ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Live Location") {
     content = <ParentTracking />;
   } else if (user.role === "Campus Admin" && active === "Live Safety Map") {

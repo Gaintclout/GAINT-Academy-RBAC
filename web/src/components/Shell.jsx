@@ -28,6 +28,7 @@ import HRLeave from "./HRLeave";
 import HRDocuments from "./HRDocuments";
 import HRRecruitment from "./HRRecruitment";
 import HRPerformance from "./HRPerformance";
+import HRReports from "./HRReports";
 import StudentAcademicModule from "./StudentAcademicModule";
 import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import AdaptiveRoleModule from "./AdaptiveRoleModule";
@@ -107,6 +108,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <UsersRoles currentUser={user} />;
   } else if (user.role === "Institution Admin" && active === "Parent ↔ Student Links") {
     content = <ParentStudentLinks />;
+  } else if (user.role === "HR" && active === "HR Reports") {
+    content = <HRReports ui={ui} />;
   } else if (user.role === "HR" && active === "Performance") {
     content = <HRPerformance ui={ui} />;
   } else if (user.role === "HR" && active === "Recruitment") {

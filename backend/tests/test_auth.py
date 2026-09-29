@@ -312,3 +312,21 @@ def test_student_events_are_student_scoped_and_role_protected():
     assert response.status_code==200, response.text
     assert isinstance(response.json(),list)
     assert client.get("/api/v1/student/events",headers=teacher_headers).status_code==403
+
+
+def test_student_grievance_create_list_and_rbac():
+    student_headers=_login("student@gaintacademy.com")
+    teacher_headers=_login("teacher@gaintacademy.com")
+    created=client.post("/api/v1/student/grievances",headers=student_headers,json={
+        "category":"Academic","subject":"Test support request","details":"Need assistance with an academic issue.","priority":"Normal"
+    })
+    assert created.status_code==200, created.text
+    ticket=created.json()["ticket_no"]
+    assert ticket.startswith("GR-")
+    rows=client.get("/api/v1/student/grievances",headers=student_headers)
+    assert rows.status_code==200
+    assert any(x["ticket_no"]==ticket for x in rows.json())
+    assert client.get("/api/v1/student/grievances",headers=teacher_headers).status_code==403
+    assert client.post("/api/v1/student/grievances",headers=student_headers,json={
+        "category":"Academic","subject":"","details":"","priority":"Normal"
+    }).status_code==400

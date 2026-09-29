@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -325,6 +325,35 @@ def student_profile(user:User=Depends(require_roles("Student")),db:Session=Depen
         "academics":academics,
         "guardians":guardians,
     }
+
+@app.get("/api/v1/student/grievances")
+def student_grievances(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(Grievance).where(
+        Grievance.tenant_id==user.tenant_id,
+        Grievance.created_by_user_id==user.id,
+    ).order_by(Grievance.created_at.desc())).all()
+    return [{"id":x.id,"ticket_no":x.ticket_no,"category":x.category,"subject":x.subject,
+             "details":x.details,"priority":x.priority,"status":x.status,
+             "latest_update":x.latest_update,"created_at":x.created_at,"updated_at":x.updated_at} for x in rows]
+
+@app.post("/api/v1/student/grievances")
+def create_student_grievance(payload:GrievanceIn,user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    subject=payload.subject.strip()
+    details=payload.details.strip()
+    category=payload.category.strip() or "General"
+    priority=payload.priority.strip().title() or "Normal"
+    if not subject: raise HTTPException(400,"subject is required")
+    if not details: raise HTTPException(400,"details are required")
+    if priority not in {"Low","Normal","High","Urgent"}: raise HTTPException(400,"Invalid priority")
+    row=Grievance(tenant_id=user.tenant_id,campus_id=user.campus_id,created_by_user_id=user.id,
+                  ticket_no="PENDING",category=category,subject=subject,details=details,priority=priority)
+    db.add(row); db.flush()
+    row.ticket_no=f"GR-{row.id:06d}"
+    audit(db,user,"CREATE","Grievance",f"ticket={row.ticket_no};category={category};priority={priority}")
+    db.commit(); db.refresh(row)
+    return {"id":row.id,"ticket_no":row.ticket_no,"category":row.category,"subject":row.subject,
+            "priority":row.priority,"status":row.status,"latest_update":row.latest_update,
+            "created_at":row.created_at,"updated_at":row.updated_at}
 
 @app.get("/api/v1/student/events")
 def student_events(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):

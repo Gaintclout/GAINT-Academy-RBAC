@@ -264,3 +264,13 @@ class TeacherLeaveIn(BaseModel):
     start_date: str
     end_date: str
     reason: str = Field(min_length=2)
+
+
+class CampusVisitorIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    phone: str = Field(default="", max_length=40)
+    purpose: str = Field(min_length=2, max_length=250)
+    person_to_meet: str = Field(default="", max_length=120)
+
+class CampusVisitorStatusIn(BaseModel):
+    status: str

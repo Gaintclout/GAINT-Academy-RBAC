@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan
 from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
@@ -325,6 +325,28 @@ def student_profile(user:User=Depends(require_roles("Student")),db:Session=Depen
         "academics":academics,
         "guardians":guardians,
     }
+
+@app.get("/api/v1/student/library")
+def student_library(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    loans=db.scalars(select(LibraryLoan).where(
+        LibraryLoan.tenant_id==user.tenant_id,
+        LibraryLoan.borrower_user_id==user.id,
+    ).order_by(LibraryLoan.issued_at.desc())).all()
+    result=[]
+    for loan in loans:
+        book=db.get(LibraryBook,loan.book_id)
+        if not book or book.tenant_id!=user.tenant_id:
+            continue
+        result.append({
+            "loan_id":loan.id,
+            "book":{"id":book.id,"accession_no":book.accession_no,"isbn":book.isbn,"title":book.title,"author":book.author,"category":book.category},
+            "issued_at":loan.issued_at,
+            "due_at":loan.due_at,
+            "returned_at":loan.returned_at,
+            "fine_amount":float(loan.fine_amount or 0),
+            "status":loan.status,
+        })
+    return result
 
 @app.get("/api/v1/student/transport")
 def student_transport(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):

@@ -66,6 +66,18 @@ class Grievance(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class TeacherNote(Base):
+    __tablename__ = "teacher_notes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    teacher_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("academic_units.id"), nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(180))
+    note: Mapped[str] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(30), default="PRIVATE")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
 class AcademyEvent(Base):
     __tablename__ = "academy_events"
     id: Mapped[int] = mapped_column(primary_key=True)

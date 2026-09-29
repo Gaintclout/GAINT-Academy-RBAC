@@ -377,3 +377,21 @@ def test_teacher_notes_and_communication_reject_unassigned_student():
             "recipient_user_id":student["id"],"student_user_id":student["id"],"subject":"Blocked message","body":"Must not be accepted"
         })
         assert message.status_code==403
+
+
+def test_teacher_core_academic_endpoints_are_role_protected():
+    teacher=_login("teacher@gaintacademy.com")
+    parent=_login("parent@gaintacademy.com")
+    for path in ("/api/v1/teacher-roster","/api/v1/class-sessions"):
+        response=client.get(path,headers=teacher)
+        assert response.status_code==200, response.text
+        assert client.get(path,headers=parent).status_code==403
+
+
+def test_teacher_event_endpoint_is_teacher_only():
+    teacher=_login("teacher@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    response=client.get("/api/v1/teacher/events",headers=teacher)
+    assert response.status_code==200, response.text
+    assert isinstance(response.json(),list)
+    assert client.get("/api/v1/teacher/events",headers=student).status_code==403

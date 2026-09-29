@@ -1,13 +1,1 @@
-import React,{useEffect,useState} from "react";
-import {api} from "../api";
-export default function Audit(){
-  const [rows,setRows]=useState([]);
-  useEffect(()=>{api.get("/api/v1/audit").then(r=>setRows(r.data))},[]);
-  return <>
-    <div className="page-title"><div><h1>Audit Trail</h1><p>Privileged and safety-sensitive access history.</p></div></div>
-    <section className="panel">
-      <table><thead><tr><th>Actor</th><th>Action</th><th>Resource</th><th>Details</th><th>Time</th></tr></thead>
-      <tbody>{rows.map(x=><tr key={x.id}><td>{x.actor}</td><td>{x.action}</td><td>{x.resource}</td><td>{x.details}</td><td>{String(x.created_at)}</td></tr>)}</tbody></table>
-    </section>
-  </>
-}
+import React,{useEffect,useMemo,useState} from "react";import {api} from "../api";export default function Audit(){const[rows,setRows]=useState([]),[query,setQuery]=useState(""),[err,setErr]=useState("");useEffect(()=>{api.get("/api/v1/audit").then(r=>setRows(r.data||[])).catch(e=>setErr(e?.response?.data?.detail||"Unable to load audit trail."))},[]);const filtered=useMemo(()=>{const q=query.trim().toLowerCase();if(!q)return rows;return rows.filter(x=>[x.actor,x.action,x.resource,x.details].some(v=>String(v||"").toLowerCase().includes(q)))},[rows,query]);return <div><section className="module-context"><div><span className="eyebrow">Auditor • Read Only</span><h1>Audit Trail</h1><p>Tenant-wide history of privileged, operational and safety-sensitive actions.</p></div></section>{err&&<div className="error">{err}</div>}<div className="module-kpis"><article><small>Total Events</small><strong>{rows.length}</strong><span>Latest 200 retained in this view</span></article><article><small>Visible Results</small><strong>{filtered.length}</strong><span>After search filter</span></article></div><section className="panel structure-table"><div className="panel-title"><b>Audit Events</b><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search actor, action, resource..." /></div><div className="table-scroll"><table><thead><tr><th>Actor</th><th>Action</th><th>Resource</th><th>Details</th><th>Time</th></tr></thead><tbody>{filtered.length?filtered.map(x=><tr key={x.id}><td>{x.actor}</td><td><b>{x.action}</b></td><td>{x.resource}</td><td>{x.details||"—"}</td><td>{new Date(x.created_at).toLocaleString()}</td></tr>):<tr><td colSpan="5" className="empty-cell">No matching audit events.</td></tr>}</tbody></table></div></section></div>}

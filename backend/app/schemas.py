@@ -135,6 +135,15 @@ class FeePaymentIn(BaseModel):
     reference: str = Field(default="", max_length=100)
 
 
+class StaffPerformanceReviewIn(BaseModel):
+    staff_user_id: int = Field(ge=1)
+    review_period: str = Field(min_length=2, max_length=80)
+    rating: int = Field(ge=1, le=5)
+    strengths: str = Field(default="", max_length=2000)
+    improvement_areas: str = Field(default="", max_length=2000)
+    goals: str = Field(default="", max_length=2000)
+    status: str = "COMPLETED"
+
 class RecruitmentCandidateIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     email: str = Field(min_length=5, max_length=180)

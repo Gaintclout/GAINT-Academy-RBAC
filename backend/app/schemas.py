@@ -224,6 +224,10 @@ class TeacherMessageIn(BaseModel):
     body: str = Field(min_length=1)
 
 
+class HRLeaveReviewIn(BaseModel):
+    status: str
+    reviewer_note: str = Field(default="", max_length=1000)
+
 class TeacherLeaveIn(BaseModel):
     leave_type: str = Field(default="Casual", min_length=2, max_length=60)
     start_date: str

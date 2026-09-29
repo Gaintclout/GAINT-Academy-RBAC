@@ -736,6 +736,17 @@ def campus_staff(user:User=Depends(require_roles("Campus Admin","Institution Adm
     rows=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role.in_(roles)).order_by(User.name)).all()
     return [{"id":x.id,"name":x.name,"email":x.email,"role":x.role,"campus_id":x.campus_id,"is_active":x.is_active} for x in rows]
 
+@app.get("/api/v1/campus/attendance")
+def campus_attendance(user:User=Depends(require_roles("Campus Admin","Institution Admin")),db:Session=Depends(get_db)):
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role=="Student")).all()
+    ids={x.id for x in students}
+    entries=db.scalars(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id).order_by(AttendanceEntry.marked_at.desc())).all()
+    entries=[x for x in entries if x.student_user_id in ids]
+    names={x.id:x.name for x in students}
+    counts={}
+    for x in entries: counts[x.status]=counts.get(x.status,0)+1
+    return {"summary":{"total_records":len(entries),"present":counts.get("PRESENT",0),"absent":counts.get("ABSENT",0),"late":counts.get("LATE",0)},"entries":[{"id":x.id,"student_user_id":x.student_user_id,"student_name":names.get(x.student_user_id,""),"session_id":x.session_id,"status":x.status,"note":x.note,"marked_at":x.marked_at} for x in entries[:200]]}
+
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}

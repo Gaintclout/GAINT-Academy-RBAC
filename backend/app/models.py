@@ -66,6 +66,21 @@ class Grievance(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class TeacherLeaveRequest(Base):
+    __tablename__ = "teacher_leave_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    teacher_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    leave_type: Mapped[str] = mapped_column(String(60), default="Casual")
+    start_date: Mapped[dt.datetime] = mapped_column(DateTime)
+    end_date: Mapped[dt.datetime] = mapped_column(DateTime)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    reviewer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewer_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class CommunicationMessage(Base):
     __tablename__ = "communication_messages"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

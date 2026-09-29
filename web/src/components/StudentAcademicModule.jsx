@@ -209,16 +209,27 @@ function StudentEvents() {
 export default function StudentAcademicModule({ title, ui, user }) {
   const config = MODULES[title];
   const [details, setDetails] = useState("");
+  const [subject, setSubject] = useState("");
+  const [category, setCategory] = useState("General");
+  const [priority, setPriority] = useState("Normal");
+  const [grievances, setGrievances] = useState([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (title !== "Grievance") return;
+    api.get("/api/v1/student/grievances")
+      .then((response) => setGrievances(response.data || []))
+      .catch((e) => setError(e?.response?.data?.detail || "Unable to load grievances."));
+  }, [title]);
 
   if (!config) return null;
 
   async function raiseSupport() {
     const value = details.trim();
-    if (!value) {
-      setError("Please enter the grievance details.");
+    if (!subject.trim() || !value) {
+      setError("Please enter the grievance subject and details.");
       setMessage("");
       return;
     }
@@ -226,12 +237,15 @@ export default function StudentAcademicModule({ title, ui, user }) {
       setSaving(true);
       setError("");
       setMessage("");
-      const response = await api.post("/api/v1/module-actions/create_grievance", {
-        page: "Grievance",
-        details: value,
+      const response = await api.post("/api/v1/student/grievances", {
+        subject: subject.trim(), details: value, category, priority,
       });
+      setSubject("");
       setDetails("");
-      setMessage(response.data?.message || "Grievance request submitted.");
+      setCategory("General");
+      setPriority("Normal");
+      setGrievances((rows) => [response.data, ...rows]);
+      setMessage("Grievance " + response.data.ticket_no + " submitted.");
     } catch (e) {
       setError(e?.response?.data?.detail || "Unable to submit grievance.");
     } finally {
@@ -254,19 +268,23 @@ export default function StudentAcademicModule({ title, ui, user }) {
     {title === "My Profile" ? <StudentProfile user={user} ui={ui} /> : title === "Transport" ? <StudentTransport /> : title === "Library" ? <StudentLibrary /> : title === "Events" ? <StudentEvents /> : <>
       {title === "Grievance" && <section className="panel">
         <div className="panel-title"><b>Raise Grievance</b><span>Student Support</span></div>
+        <label>Subject</label>
+        <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Short grievance subject" />
+        <label>Category</label>
+        <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Academic, Transport, Library..." />
+        <label>Priority</label>
+        <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+          <option>Low</option><option>Normal</option><option>High</option><option>Urgent</option>
+        </select>
         <label>Details</label>
-        <textarea
-          value={details}
-          onChange={(event) => setDetails(event.target.value)}
-          placeholder="Describe the issue or support you need"
-        />
+        <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Describe the issue or support you need" />
         <div className="actions">
           <button className="primary" type="button" disabled={saving || !details.trim()} onClick={raiseSupport}>
             {saving ? "Submitting..." : "Submit Grievance"}
           </button>
         </div>
       </section>}
-      <EmptyTable columns={config.columns} message={config.empty} />
+      {title === "Grievance" ? (grievances.length ? <section className="panel structure-table"><div className="panel-title"><b>My Grievances</b><span>{grievances.length}</span></div><div className="table-scroll"><table><thead><tr>{config.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{grievances.map((row) => <tr key={row.id}><td><b>{row.ticket_no}</b></td><td>{row.category}</td><td>{new Date(row.created_at).toLocaleString()}</td><td>{row.priority}</td><td>{row.status}</td><td>{row.latest_update || "Awaiting response"}</td></tr>)}</tbody></table></div></section> : <EmptyTable columns={config.columns} message={config.empty} />) : <EmptyTable columns={config.columns} message={config.empty} />}
     </>}
   </div>;
 }

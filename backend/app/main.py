@@ -1507,7 +1507,6 @@ def parent_child_location(
         "latitude":row.latitude,"longitude":row.longitude,"accuracy":row.accuracy,
         "source":row.source,"tracking_context":row.tracking_context,"status":row.status,
         "recorded_at":row.recorded_at,
-        "bus":{"route":"Route A1","vehicle":"GAINT BUS 12","eta_minutes":12}
     }
 
 @app.get("/api/v1/admin/live-locations")

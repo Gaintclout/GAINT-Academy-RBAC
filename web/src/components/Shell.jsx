@@ -22,6 +22,7 @@ import AccountsConcessions from "./AccountsConcessions";
 import AccountsRefunds from "./AccountsRefunds";
 import AccountsReconciliation from "./AccountsReconciliation";
 import HRDashboard from "./HRDashboard";
+import HRStaff from "./HRStaff";
 import StudentAcademicModule from "./StudentAcademicModule";
 import InstitutionRoleDashboard from "./InstitutionRoleDashboard";
 import AdaptiveRoleModule from "./AdaptiveRoleModule";
@@ -101,6 +102,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <UsersRoles currentUser={user} />;
   } else if (user.role === "Institution Admin" && active === "Parent ↔ Student Links") {
     content = <ParentStudentLinks />;
+  } else if (user.role === "HR" && active === "Staff") {
+    content = <HRStaff ui={ui} />;
   } else if (user.role === "Accounts" && active === "Reconciliation") {
     content = <AccountsReconciliation ui={ui} />;
   } else if (user.role === "Accounts" && active === "Refunds") {

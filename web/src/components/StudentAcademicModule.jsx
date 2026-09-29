@@ -27,7 +27,7 @@ const MODULES = {
   },
   Grievance: {
     title: "Grievance",
-    subtitle: "Raise a student support request. Ticket history will appear when the grievance API is available.",
+    subtitle: "Raise and track your student support requests.",
     columns: ["Ticket", "Category", "Created", "Priority", "Status", "Latest Update"],
     empty: "No grievance history is available.",
   },
@@ -279,7 +279,7 @@ export default function StudentAcademicModule({ title, ui, user }) {
         <label>Details</label>
         <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Describe the issue or support you need" />
         <div className="actions">
-          <button className="primary" type="button" disabled={saving || !details.trim()} onClick={raiseSupport}>
+          <button className="primary" type="button" disabled={saving || !subject.trim() || !details.trim()} onClick={raiseSupport}>
             {saving ? "Submitting..." : "Submit Grievance"}
           </button>
         </div>

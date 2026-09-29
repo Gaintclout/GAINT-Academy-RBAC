@@ -2203,6 +2203,30 @@ def auditor_evidence(user:User=Depends(require_roles("Auditor")),db:Session=Depe
     items.sort(key=lambda x:-(x["created_at"].timestamp() if x["created_at"] else 0))
     return {"summary":{"total":len(items),"available":sum(x["status"]=="AVAILABLE" for x in items),"missing":sum(x["status"]=="MISSING" for x in items),"modules":len(set(x["module"] for x in items))},"evidence":items[:300]}
 
+@app.get("/api/v1/auditor/export-reports")
+def auditor_export_reports(user:User=Depends(require_roles("Auditor")),db:Session=Depends(get_db)):
+    audits=db.scalars(select(Audit).where(Audit.tenant_id==user.tenant_id).order_by(Audit.id.desc())).all()
+    users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id)).all()
+    documents=db.scalars(select(StaffDocument).where(StaffDocument.tenant_id==user.tenant_id)).all()
+    payments=db.scalars(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id)).all()
+    reconciliations=db.scalars(select(FinanceReconciliation).where(FinanceReconciliation.tenant_id==user.tenant_id)).all()
+    inventory=db.scalars(select(CampusInventoryItem).where(CampusInventoryItem.tenant_id==user.tenant_id)).all()
+    assets=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id)).all()
+    open_grievances=sum(x.status in {"Open","In Progress"} for x in grievances)
+    document_issues=sum(x.status in {"PENDING","EXPIRED"} for x in documents)
+    low_stock=sum(x.quantity<=x.minimum_quantity for x in inventory)
+    asset_issues=sum(x.condition in {"DAMAGED","REPAIR"} for x in assets)
+    generated_at=dt.datetime.utcnow()
+    reports=[
+      {"key":"audit_trail","name":"Audit Trail Report","category":"Audit","description":"Privileged and operational activity recorded for this institution.","records":len(audits),"status":"READY","generated_at":generated_at},
+      {"key":"compliance","name":"Compliance Summary","category":"Compliance","description":"Current account, grievance, HR-document and audit-control review summary.","records":5,"status":"READY","generated_at":generated_at},
+      {"key":"exceptions","name":"Exception Report","category":"Exceptions","description":"Open operational exceptions requiring authorized follow-up.","records":open_grievances+document_issues+low_stock+asset_issues,"status":"READY","generated_at":generated_at},
+      {"key":"evidence","name":"Evidence Register","category":"Evidence","description":"Evidence references across HR, finance, admissions and audit records.","records":len(documents)+len(payments)+len(reconciliations)+len(audits),"status":"READY","generated_at":generated_at},
+      {"key":"user_access","name":"User Access Report","category":"Access","description":"Institution user-account population and active access state.","records":len(users),"status":"READY","generated_at":generated_at},
+    ]
+    return {"summary":{"reports":len(reports),"ready":sum(x["status"]=="READY" for x in reports),"audit_events":len(audits),"exceptions":open_grievances+document_issues+low_stock+asset_issues},"reports":reports}
+
 @app.get("/api/v1/audit")
 def audits(
     user:User=Depends(require_roles("Institution Admin","Campus Admin","Auditor")),

@@ -2126,6 +2126,17 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/auditor/dashboard")
+def auditor_dashboard(user:User=Depends(require_roles("Auditor")),db:Session=Depends(get_db)):
+    audits=db.scalars(select(Audit).where(Audit.tenant_id==user.tenant_id).order_by(Audit.id.desc())).all()
+    users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id)).all()
+    return {
+        "users":{"total":len(users),"active":sum(x.is_active for x in users)},
+        "audit":{"total_events":len(audits),"recent_events":[{"id":x.id,"actor":x.actor,"action":x.action,"resource":x.resource,"details":x.details,"created_at":x.created_at} for x in audits[:10]]},
+        "grievances":{"open":sum(x.status in {"Open","In Progress"} for x in grievances),"resolved":sum(x.status in {"Resolved","Closed"} for x in grievances)},
+    }
+
 @app.get("/api/v1/audit")
 def audits(
     user:User=Depends(require_roles("Institution Admin","Campus Admin","Auditor")),

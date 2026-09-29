@@ -528,3 +528,22 @@ class CampusInventoryItem(Base):
     recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CampusAsset(Base):
+    __tablename__ = "campus_assets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    asset_code: Mapped[str] = mapped_column(String(60), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    category: Mapped[str] = mapped_column(String(80), default="General", index=True)
+    serial_number: Mapped[str] = mapped_column(String(120), default="")
+    location: Mapped[str] = mapped_column(String(120), default="")
+    assigned_to: Mapped[str] = mapped_column(String(120), default="")
+    condition: Mapped[str] = mapped_column(String(30), default="GOOD")
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

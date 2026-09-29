@@ -801,7 +801,15 @@ def class_sessions(user:User=Depends(require_roles("Student","Teacher")),db:Sess
     st=select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(unit_ids))
     if user.role=="Teacher": st=st.where(ClassSession.teacher_user_id==user.id)
     rows=db.scalars(st.order_by(ClassSession.starts_at.desc())).all()
-    return [{"id":x.id,"unit_id":x.unit_id,"title":x.title,"starts_at":x.starts_at,"ends_at":x.ends_at,"room":x.room,"status":x.status} for x in rows]
+    result=[]
+    for x in rows:
+        unit=db.get(AcademicUnit,x.unit_id)
+        teacher=db.get(User,x.teacher_user_id)
+        result.append({"id":x.id,"unit_id":x.unit_id,"unit_name":unit.name if unit and unit.tenant_id==user.tenant_id else None,
+                       "unit_code":unit.code if unit and unit.tenant_id==user.tenant_id else None,
+                       "teacher":teacher.name if teacher and teacher.tenant_id==user.tenant_id else None,
+                       "title":x.title,"starts_at":x.starts_at,"ends_at":x.ends_at,"room":x.room,"status":x.status})
+    return result
 
 @app.post("/api/v1/class-sessions")
 def create_class_session(payload:ClassSessionIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):

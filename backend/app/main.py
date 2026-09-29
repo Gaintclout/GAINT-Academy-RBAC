@@ -355,6 +355,31 @@ def create_student_grievance(payload:GrievanceIn,user:User=Depends(require_roles
             "priority":row.priority,"status":row.status,"latest_update":row.latest_update,
             "created_at":row.created_at,"updated_at":row.updated_at}
 
+@app.get("/api/v1/teacher/events")
+def teacher_events(user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    events=db.scalars(select(AcademyEvent).where(
+        AcademyEvent.tenant_id==user.tenant_id,
+        AcademyEvent.status=="Published",
+    ).order_by(AcademyEvent.starts_at.asc())).all()
+    result=[]
+    for event in events:
+        if event.campus_id is not None and event.campus_id!=user.campus_id: continue
+        if event.audience_role not in ("ALL","Teacher"): continue
+        organizer=db.get(User,event.organizer_user_id) if event.organizer_user_id else None
+        registration=db.scalar(select(EventRegistration).where(
+            EventRegistration.tenant_id==user.tenant_id,
+            EventRegistration.event_id==event.id,
+            EventRegistration.user_id==user.id,
+        ))
+        result.append({"id":event.id,"title":event.title,"event_type":event.event_type,
+                       "venue":event.venue,"starts_at":event.starts_at,"ends_at":event.ends_at,
+                       "organizer":organizer.name if organizer and organizer.tenant_id==user.tenant_id else None,
+                       "registration_required":event.registration_required,
+                       "registration_deadline":event.registration_deadline,
+                       "registration_status":registration.status if registration else ("Not Registered" if event.registration_required else "Not Required"),
+                       "status":event.status})
+    return result
+
 @app.get("/api/v1/student/events")
 def student_events(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
     events=db.scalars(select(AcademyEvent).where(

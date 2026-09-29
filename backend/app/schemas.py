@@ -290,3 +290,22 @@ class CampusInventoryUpdate(BaseModel):
     quantity: int = Field(ge=0)
     status: str = "ACTIVE"
     notes: str = Field(default="", max_length=1000)
+
+
+class CampusAssetIn(BaseModel):
+    asset_code: str = Field(min_length=1, max_length=60)
+    name: str = Field(min_length=2, max_length=160)
+    category: str = Field(default="General", max_length=80)
+    serial_number: str = Field(default="", max_length=120)
+    location: str = Field(default="", max_length=120)
+    assigned_to: str = Field(default="", max_length=120)
+    condition: str = "GOOD"
+    status: str = "ACTIVE"
+    notes: str = Field(default="", max_length=1000)
+
+class CampusAssetUpdate(BaseModel):
+    location: str = Field(default="", max_length=120)
+    assigned_to: str = Field(default="", max_length=120)
+    condition: str = "GOOD"
+    status: str = "ACTIVE"
+    notes: str = Field(default="", max_length=1000)

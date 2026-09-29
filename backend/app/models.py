@@ -397,6 +397,20 @@ class FeeConcession(Base):
     approved_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class FeeRefund(Base):
+    __tablename__ = "fee_refunds"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    payment_id: Mapped[int] = mapped_column(ForeignKey("fee_payments.id"), index=True)
+    ledger_id: Mapped[int] = mapped_column(ForeignKey("fee_ledgers.id"), index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    reason: Mapped[str] = mapped_column(Text)
+    reference: Mapped[str] = mapped_column(String(100), default="")
+    status: Mapped[str] = mapped_column(String(30), default="COMPLETED")
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class FeePayment(Base):
     __tablename__ = "fee_payments"
     id: Mapped[int] = mapped_column(primary_key=True)

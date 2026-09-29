@@ -135,6 +135,12 @@ class FeePaymentIn(BaseModel):
     reference: str = Field(default="", max_length=100)
 
 
+class StaffAttendanceIn(BaseModel):
+    staff_user_id: int = Field(ge=1)
+    attendance_date: str
+    status: str
+    note: str = Field(default="", max_length=1000)
+
 class UserAdminUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=120)
     role: Optional[str] = None

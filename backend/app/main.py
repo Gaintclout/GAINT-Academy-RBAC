@@ -2137,6 +2137,22 @@ def auditor_dashboard(user:User=Depends(require_roles("Auditor")),db:Session=Dep
         "grievances":{"open":sum(x.status in {"Open","In Progress"} for x in grievances),"resolved":sum(x.status in {"Resolved","Closed"} for x in grievances)},
     }
 
+@app.get("/api/v1/auditor/compliance")
+def auditor_compliance(user:User=Depends(require_roles("Auditor")),db:Session=Depends(get_db)):
+    users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id)).all()
+    documents=db.scalars(select(StaffDocument).where(StaffDocument.tenant_id==user.tenant_id)).all()
+    leave=db.scalars(select(TeacherLeaveRequest).where(TeacherLeaveRequest.tenant_id==user.tenant_id)).all()
+    audits=db.scalars(select(Audit).where(Audit.tenant_id==user.tenant_id)).all()
+    checks=[
+      {"key":"active_users","control":"Active user accounts","status":"PASS" if all(x.is_active for x in users) else "REVIEW","value":f"{sum(x.is_active for x in users)}/{len(users)} active","detail":"Review inactive accounts and confirm they should remain disabled."},
+      {"key":"open_grievances","control":"Open grievance oversight","status":"PASS" if not any(x.status in {"Open","In Progress"} for x in grievances) else "REVIEW","value":f"{sum(x.status in {'Open','In Progress'} for x in grievances)} open","detail":"Open or in-progress grievances require operational follow-up."},
+      {"key":"staff_documents","control":"Staff document status","status":"PASS" if not any(x.status in {"PENDING","EXPIRED"} for x in documents) else "REVIEW","value":f"{sum(x.status in {'PENDING','EXPIRED'} for x in documents)} pending/expired","detail":"Pending or expired staff records require HR review."},
+      {"key":"leave_requests","control":"Pending staff leave","status":"PASS" if not any(x.status=="PENDING" for x in leave) else "REVIEW","value":f"{sum(x.status=='PENDING' for x in leave)} pending","detail":"Pending teacher leave requests require authorized review."},
+      {"key":"audit_events","control":"Audit trail availability","status":"PASS" if audits else "REVIEW","value":f"{len(audits)} events","detail":"Audit events provide evidence of privileged and operational actions."},
+    ]
+    return {"summary":{"total":len(checks),"pass":sum(x["status"]=="PASS" for x in checks),"review":sum(x["status"]=="REVIEW" for x in checks)},"checks":checks}
+
 @app.get("/api/v1/audit")
 def audits(
     user:User=Depends(require_roles("Institution Admin","Campus Admin","Auditor")),

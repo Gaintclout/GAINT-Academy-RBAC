@@ -6,7 +6,7 @@ export default function TeacherResults({ui}){
  useEffect(()=>{loadExams()},[]);
  useEffect(()=>{loadRegister()},[exam]);
  const set=(id,k,v)=>setValues(x=>({...x,[id]:{...(x[id]||{}),[k]:v}}));
- async function save(s){try{const v=values[s.student_id]||{};const r=await api.put("/api/v1/exams/"+exam+"/results",{student_user_id:s.student_id,marks:Number(v.marks),remarks:v.remarks||""});setMsg("Marks saved: "+r.data.percentage+"% · "+r.data.grade+" · "+r.data.result_status);setErr("");loadRegister()}catch(e){setErr(e?.response?.data?.detail||"Unable to save marks.")}}
+ async function save(s){try{const v=values[s.student_id]||{};const numeric=Number(v.marks);if(v.marks===""||!Number.isFinite(numeric)||numeric<0||(current?.max_marks!=null&&numeric>Number(current.max_marks))){setErr("Marks must be between 0 and the exam maximum.");return}const r=await api.put("/api/v1/exams/"+exam+"/results",{student_user_id:s.student_id,marks:numeric,remarks:v.remarks||""});setMsg("Marks saved: "+r.data.percentage+"% · "+r.data.grade+" · "+r.data.result_status);setErr("");loadRegister()}catch(e){setErr(e?.response?.data?.detail||"Unable to save marks.")}}
  async function publish(){try{const r=await api.post("/api/v1/exams/"+exam+"/publish");setMsg(r.data.published+" results published to students.");setErr("");loadRegister()}catch(e){setErr(e?.response?.data?.detail||"Unable to publish results.")}}
  const current=exams.find(x=>String(x.id)===exam);
  return <div><section className="module-context"><div><span className="eyebrow">{ui.label} • Faculty</span><h1>Marks & Results</h1><p>Enter marks for every enrolled student. Grades are calculated from the institution grading scheme and published results are locked.</p></div></section>

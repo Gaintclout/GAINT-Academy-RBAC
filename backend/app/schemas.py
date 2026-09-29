@@ -135,6 +135,19 @@ class FeePaymentIn(BaseModel):
     reference: str = Field(default="", max_length=100)
 
 
+class RecruitmentCandidateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=180)
+    phone: str = Field(default="", max_length=40)
+    position: str = Field(min_length=2, max_length=120)
+    stage: str = "APPLIED"
+    source: str = Field(default="", max_length=80)
+    notes: str = Field(default="", max_length=1000)
+
+class RecruitmentStageIn(BaseModel):
+    stage: str
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
 class StaffDocumentIn(BaseModel):
     staff_user_id: int = Field(ge=1)
     document_type: str = Field(min_length=2, max_length=80)

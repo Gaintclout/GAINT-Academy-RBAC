@@ -26,6 +26,7 @@ import StudentAttendanceTimetable from "./StudentAttendanceTimetable";
 import GradeRules from "./GradeRules";
 import StudentResults from "./StudentResults";
 import TeacherResults from "./TeacherResults";
+import TeacherNotes from "./TeacherNotes";
 import AcademicTranscript from "./AcademicTranscript";
 import StudentExams from "./StudentExams";
 import UsersRoles from "./UsersRoles";
@@ -94,6 +95,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AcademicTranscript ui={ui} user={user} />;
   } else if (user.role === "Teacher" && active === "Results") {
     content = <TeacherResults ui={ui} />;
+  } else if (user.role === "Teacher" && active === "Teacher Notes") {
+    content = <TeacherNotes ui={ui} />;
   } else if (user.role === "Student" && ["Timetable","Attendance"].includes(active)) {
     content = <StudentAttendanceTimetable title={active} ui={ui} />;
   } else if (user.role === "Teacher" && ["Timetable","Attendance"].includes(active)) {

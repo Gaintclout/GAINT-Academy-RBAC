@@ -49,6 +49,47 @@ class Record(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class TransportRoute(Base):
+    __tablename__ = "transport_routes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    code: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+
+class TransportVehicle(Base):
+    __tablename__ = "transport_vehicles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    vehicle_number: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+
+class TransportStop(Base):
+    __tablename__ = "transport_stops"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    route_id: Mapped[int] = mapped_column(ForeignKey("transport_routes.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    stop_order: Mapped[int] = mapped_column(default=0)
+
+class StudentTransportAllocation(Base):
+    __tablename__ = "student_transport_allocations"
+    __table_args__ = (UniqueConstraint("tenant_id","student_user_id", name="uq_student_transport_allocation"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    route_id: Mapped[int] = mapped_column(ForeignKey("transport_routes.id"), index=True)
+    vehicle_id: Mapped[int | None] = mapped_column(ForeignKey("transport_vehicles.id"), nullable=True, index=True)
+    stop_id: Mapped[int] = mapped_column(ForeignKey("transport_stops.id"), index=True)
+    pickup_time: Mapped[str] = mapped_column(String(10), default="")
+    drop_time: Mapped[str] = mapped_column(String(10), default="")
+    status: Mapped[str] = mapped_column(String(30), default="Active")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class StudentLocation(Base):
     __tablename__ = "student_locations"
     id: Mapped[int] = mapped_column(primary_key=True)

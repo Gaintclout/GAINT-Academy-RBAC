@@ -1941,6 +1941,18 @@ def parent_child_location(
         "recorded_at":row.recorded_at,
     }
 
+@app.get("/api/v1/campus/live-locations")
+def campus_live_locations(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role=="Student")).all()
+    result=[]
+    for student in students:
+        row=_latest_location(db,student.id,user.tenant_id)
+        if row and row.campus_id==user.campus_id:
+            result.append({"student_id":student.id,"name":student.name,"latitude":row.latitude,"longitude":row.longitude,"accuracy":row.accuracy,"source":row.source,"status":row.status,"tracking_context":row.tracking_context,"recorded_at":row.recorded_at})
+    audit(db,user,"LOCATION_MONITOR_VIEW","campus_live_locations",f"campus={user.campus_id};count={len(result)}")
+    db.commit()
+    return result
+
 @app.get("/api/v1/admin/live-locations")
 def live_locations(
     user:User=Depends(require_roles("Institution Admin","Campus Admin")),

@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -1446,6 +1446,39 @@ def create_finance_concession(payload:FeeConcessionIn,user:User=Depends(require_
     ledger.status="PAID" if ledger.amount_paid>=ledger.amount_due else ("PARTIAL" if ledger.amount_paid>0 else "DUE")
     db.add(row); audit(db,user,"CONCESSION","fee_ledger",f"ledger={ledger.id};amount={amount}"); db.commit(); db.refresh(row)
     return {"id":row.id,"ledger_id":row.ledger_id,"amount":float(row.amount),"status":row.status}
+
+@app.get("/api/v1/finance/refunds")
+def finance_refunds(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(FeeRefund).where(FeeRefund.tenant_id==user.tenant_id).order_by(FeeRefund.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        student=db.get(User,row.student_user_id); ledger=db.get(FeeLedger,row.ledger_id)
+        result.append({"id":row.id,"payment_id":row.payment_id,"student_user_id":row.student_user_id,
+                       "student_name":student.name if student else f"Student {row.student_user_id}",
+                       "fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "",
+                       "amount":float(row.amount),"reason":row.reason,"reference":row.reference,
+                       "status":row.status,"created_at":row.created_at})
+    return result
+
+@app.post("/api/v1/finance/refunds")
+def create_finance_refund(payload:FeeRefundIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    payment=db.get(FeePayment,payload.payment_id)
+    if not payment or payment.tenant_id!=user.tenant_id: raise HTTPException(404,"Payment not found")
+    ledger=db.get(FeeLedger,payment.ledger_id)
+    if not ledger or ledger.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    refunded=db.scalar(select(func.coalesce(func.sum(FeeRefund.amount),0)).where(FeeRefund.tenant_id==user.tenant_id,FeeRefund.payment_id==payment.id))
+    amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
+    available=Decimal(str(payment.amount))-Decimal(str(refunded or 0))
+    if amount>available: raise HTTPException(400,"Refund cannot exceed the unrefunded payment amount")
+    if amount>ledger.amount_paid: raise HTTPException(400,"Refund cannot exceed the ledger paid amount")
+    reference=payload.reference.strip()
+    if reference and db.scalar(select(FeeRefund).where(FeeRefund.tenant_id==user.tenant_id,FeeRefund.reference==reference)): raise HTTPException(409,"This refund reference has already been recorded")
+    row=FeeRefund(tenant_id=user.tenant_id,payment_id=payment.id,ledger_id=ledger.id,student_user_id=payment.student_user_id,
+                  amount=amount,reason=payload.reason.strip(),reference=reference,status="COMPLETED",recorded_by=user.id)
+    ledger.amount_paid-=amount
+    ledger.status="PAID" if ledger.amount_paid>=ledger.amount_due else ("PARTIAL" if ledger.amount_paid>0 else "DUE")
+    db.add(row); audit(db,user,"REFUND","fee_ledger",f"ledger={ledger.id};payment={payment.id};amount={amount}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"amount":float(row.amount),"status":row.status}
 
 @app.get("/api/v1/finance/payments")
 def finance_payments(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):

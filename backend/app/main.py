@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -717,6 +717,22 @@ def module_access(page: str, user: User = Depends(current_user)):
 @app.get("/api/v1/dashboard")
 def dashboard(user: User = Depends(current_user)):
     return dashboard_for(user.role)
+
+@app.get("/api/v1/hr/performance")
+def hr_performance(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(StaffPerformanceReview).where(StaffPerformanceReview.tenant_id==user.tenant_id).order_by(StaffPerformanceReview.created_at.desc())).all()
+    people={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()}
+    return [{"id":x.id,"staff_user_id":x.staff_user_id,"staff_name":people[x.staff_user_id].name if x.staff_user_id in people else "Unknown","role":people[x.staff_user_id].role if x.staff_user_id in people else "","review_period":x.review_period,"rating":x.rating,"strengths":x.strengths,"improvement_areas":x.improvement_areas,"goals":x.goals,"status":x.status,"created_at":x.created_at} for x in rows]
+
+@app.post("/api/v1/hr/performance")
+def create_hr_performance(payload:StaffPerformanceReviewIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
+    target=db.get(User,payload.staff_user_id)
+    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"}: raise HTTPException(400,"Invalid staff member")
+    status=payload.status.strip().upper()
+    if status not in {"DRAFT","COMPLETED"}: raise HTTPException(400,"Invalid review status")
+    row=StaffPerformanceReview(tenant_id=user.tenant_id,staff_user_id=target.id,review_period=payload.review_period.strip(),rating=payload.rating,strengths=payload.strengths.strip(),improvement_areas=payload.improvement_areas.strip(),goals=payload.goals.strip(),status=status,reviewed_by=user.id)
+    db.add(row);audit(db,user,"CREATE","staff_performance",f"staff={target.id};period={row.review_period};rating={row.rating}");db.commit();db.refresh(row)
+    return {"id":row.id,"staff_user_id":row.staff_user_id,"review_period":row.review_period,"rating":row.rating,"status":row.status}
 
 @app.get("/api/v1/hr/recruitment")
 def hr_recruitment(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

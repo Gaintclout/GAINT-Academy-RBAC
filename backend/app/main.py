@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -699,6 +699,26 @@ def module_access(page: str, user: User = Depends(current_user)):
 @app.get("/api/v1/dashboard")
 def dashboard(user: User = Depends(current_user)):
     return dashboard_for(user.role)
+
+@app.get("/api/v1/hr/attendance")
+def hr_attendance(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(StaffAttendance).where(StaffAttendance.tenant_id==user.tenant_id).order_by(StaffAttendance.attendance_date.desc(),StaffAttendance.id.desc())).all()
+    users={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()}
+    return [{"id":x.id,"staff_user_id":x.staff_user_id,"staff_name":users[x.staff_user_id].name if x.staff_user_id in users else "Unknown","role":users[x.staff_user_id].role if x.staff_user_id in users else "","attendance_date":x.attendance_date,"status":x.status,"note":x.note} for x in rows]
+
+@app.post("/api/v1/hr/attendance")
+def mark_hr_attendance(payload:StaffAttendanceIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
+    target=db.get(User,payload.staff_user_id)
+    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"}: raise HTTPException(400,"Invalid staff member")
+    try: day=dt.datetime.fromisoformat(payload.attendance_date).replace(hour=0,minute=0,second=0,microsecond=0)
+    except ValueError: raise HTTPException(400,"Invalid attendance date")
+    status=payload.status.strip().upper()
+    if status not in {"PRESENT","ABSENT","LEAVE","HALF_DAY","WORK_FROM_HOME"}: raise HTTPException(400,"Invalid attendance status")
+    row=db.scalar(select(StaffAttendance).where(StaffAttendance.tenant_id==user.tenant_id,StaffAttendance.staff_user_id==target.id,StaffAttendance.attendance_date==day))
+    if row: row.status=status;row.note=payload.note.strip();row.recorded_by=user.id;row.updated_at=dt.datetime.utcnow()
+    else: row=StaffAttendance(tenant_id=user.tenant_id,staff_user_id=target.id,attendance_date=day,status=status,note=payload.note.strip(),recorded_by=user.id);db.add(row)
+    audit(db,user,"ATTENDANCE","staff",f"staff={target.id};date={day.date()};status={status}");db.commit();db.refresh(row)
+    return {"id":row.id,"staff_user_id":row.staff_user_id,"attendance_date":row.attendance_date,"status":row.status,"note":row.note}
 
 @app.get("/api/v1/hr/staff")
 def hr_staff(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

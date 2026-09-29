@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -381,6 +381,39 @@ def create_teacher_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     db.add(row); audit(db,user,"CREATE","Leave",leave_type); db.commit(); db.refresh(row)
     return {"id":row.id,"leave_type":row.leave_type,"start_date":row.start_date,"end_date":row.end_date,
             "reason":row.reason,"status":row.status,"reviewer_note":row.reviewer_note,"created_at":row.created_at}
+
+@app.get("/api/v1/parents/leave")
+def parent_leave_requests(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    child_ids={x.student_user_id for x in db.scalars(select(ParentStudentLink).where(
+        ParentStudentLink.parent_user_id==user.id,ParentStudentLink.tenant_id==user.tenant_id)).all()}
+    rows=db.scalars(select(StudentLeaveRequest).where(
+        StudentLeaveRequest.tenant_id==user.tenant_id,
+        StudentLeaveRequest.requested_by_user_id==user.id,
+    ).order_by(StudentLeaveRequest.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        if row.student_user_id not in child_ids: continue
+        student=db.get(User,row.student_user_id)
+        result.append({"id":row.id,"student_user_id":row.student_user_id,"student_name":student.name if student else "Student",
+                       "leave_type":row.leave_type,"start_date":row.start_date,"end_date":row.end_date,
+                       "reason":row.reason,"status":row.status,"reviewer_note":row.reviewer_note,"created_at":row.created_at})
+    return result
+
+@app.post("/api/v1/parents/leave")
+def create_parent_leave(payload:ParentStudentLeaveIn,user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    student=_linked_child(db,user,payload.student_user_id)
+    try:
+        start=dt.datetime.fromisoformat(payload.start_date); end=dt.datetime.fromisoformat(payload.end_date)
+    except ValueError: raise HTTPException(400,"Invalid leave date")
+    if end<start: raise HTTPException(400,"Leave end date cannot be before start date")
+    leave_type=payload.leave_type.strip().title()
+    if leave_type not in {"Casual","Sick","Emergency","Other"}: raise HTTPException(400,"Invalid leave type")
+    row=StudentLeaveRequest(tenant_id=user.tenant_id,student_user_id=student.id,requested_by_user_id=user.id,
+                            leave_type=leave_type,start_date=start,end_date=end,reason=payload.reason.strip(),status="PENDING")
+    db.add(row); audit(db,user,"CREATE","Student Leave",f"student={student.id};type={leave_type}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"student_user_id":student.id,"student_name":student.name,"leave_type":row.leave_type,
+            "start_date":row.start_date,"end_date":row.end_date,"reason":row.reason,"status":row.status,
+            "reviewer_note":row.reviewer_note,"created_at":row.created_at}
 
 @app.get("/api/v1/parents/grievances")
 def parent_grievances(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):

@@ -438,3 +438,51 @@ def test_parent_message_rejects_invalid_teacher_context():
         "recipient_user_id":children[0]["id"],"student_user_id":children[0]["id"],
         "subject":"Test message","body":"Parent communication authorization test"})
     assert response.status_code==404
+
+
+def test_hr_domain_endpoints_are_role_protected_and_auditor_read_only():
+    hr=_login("hr@gaintacademy.com")
+    auditor=_login("auditor@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    read_paths=[
+        "/api/v1/hr/staff","/api/v1/hr/attendance","/api/v1/hr/leave",
+        "/api/v1/hr/documents","/api/v1/hr/recruitment",
+        "/api/v1/hr/performance","/api/v1/hr/reports",
+    ]
+    for path in read_paths:
+        assert client.get(path,headers=hr).status_code==200
+        assert client.get(path,headers=auditor).status_code==200
+        assert client.get(path,headers=student).status_code==403
+
+    staff=client.get("/api/v1/hr/staff",headers=hr).json()
+    teacher=next(x for x in staff if x["role"]=="Teacher")
+    assert client.post("/api/v1/hr/attendance",headers=auditor,json={
+        "staff_user_id":teacher["id"],"attendance_date":"2026-09-29","status":"PRESENT","note":""
+    }).status_code==403
+    assert client.post("/api/v1/hr/documents",headers=auditor,json={
+        "staff_user_id":teacher["id"],"document_type":"ID Proof","title":"Audit attempt"
+    }).status_code==403
+    assert client.post("/api/v1/hr/recruitment",headers=auditor,json={
+        "name":"Audit Candidate","email":"audit-candidate@example.com","position":"Teacher"
+    }).status_code==403
+    assert client.post("/api/v1/hr/performance",headers=auditor,json={
+        "staff_user_id":teacher["id"],"review_period":"Q3 2026","rating":4
+    }).status_code==403
+
+
+def test_hr_attendance_and_performance_validate_staff_scope():
+    hr=_login("hr@gaintacademy.com")
+    assert client.post("/api/v1/hr/attendance",headers=hr,json={
+        "staff_user_id":999999,"attendance_date":"2026-09-29","status":"PRESENT","note":""
+    }).status_code==400
+    assert client.post("/api/v1/hr/performance",headers=hr,json={
+        "staff_user_id":999999,"review_period":"Q3 2026","rating":4
+    }).status_code==400
+    staff=client.get("/api/v1/hr/staff",headers=hr).json()
+    teacher=next(x for x in staff if x["role"]=="Teacher")
+    assert client.post("/api/v1/hr/attendance",headers=hr,json={
+        "staff_user_id":teacher["id"],"attendance_date":"2026-09-29","status":"INVALID","note":""
+    }).status_code==400
+    assert client.post("/api/v1/hr/performance",headers=hr,json={
+        "staff_user_id":teacher["id"],"review_period":"Q3 2026","rating":6
+    }).status_code==422

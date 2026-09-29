@@ -118,6 +118,12 @@ class FeeConcessionIn(BaseModel):
     amount: float = Field(gt=0)
     reason: str = Field(min_length=2, max_length=1000)
 
+class FeeRefundIn(BaseModel):
+    payment_id: int = Field(ge=1)
+    amount: float = Field(gt=0)
+    reason: str = Field(min_length=2, max_length=1000)
+    reference: str = Field(default="", max_length=100)
+
 class FeePaymentIn(BaseModel):
     amount: float = Field(gt=0)
     reference: str = Field(default="", max_length=100)

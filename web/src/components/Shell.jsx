@@ -27,6 +27,7 @@ import Audit from "./Audit";
 import AuditorDashboard from "./AuditorDashboard";
 import AuditorCompliance from "./AuditorCompliance";
 import AuditorExceptions from "./AuditorExceptions";
+import AuditorEvidence from "./AuditorEvidence";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
@@ -216,6 +217,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <LiveSafetyMap />;
   } else if (user.role === "Student" && active === "My Safety") {
     content = <StudentSafety />;
+  } else if (user.role === "Auditor" && active === "Evidence") {
+    content = <AuditorEvidence ui={ui} />;
   } else if (user.role === "Auditor" && active === "Exception Reports") {
     content = <AuditorExceptions ui={ui} />;
   } else if (user.role === "Auditor" && active === "Compliance") {

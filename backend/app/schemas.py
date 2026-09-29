@@ -135,6 +135,15 @@ class FeePaymentIn(BaseModel):
     reference: str = Field(default="", max_length=100)
 
 
+class StaffDocumentIn(BaseModel):
+    staff_user_id: int = Field(ge=1)
+    document_type: str = Field(min_length=2, max_length=80)
+    title: str = Field(min_length=2, max_length=180)
+    document_ref: str = Field(default="", max_length=500)
+    expiry_date: Optional[str] = None
+    status: str = "ACTIVE"
+    notes: str = Field(default="", max_length=1000)
+
 class StaffAttendanceIn(BaseModel):
     staff_user_id: int = Field(ge=1)
     attendance_date: str

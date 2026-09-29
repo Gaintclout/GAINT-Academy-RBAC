@@ -747,6 +747,17 @@ def campus_attendance(user:User=Depends(require_roles("Campus Admin","Institutio
     for x in entries: counts[x.status]=counts.get(x.status,0)+1
     return {"summary":{"total_records":len(entries),"present":counts.get("PRESENT",0),"absent":counts.get("ABSENT",0),"late":counts.get("LATE",0)},"entries":[{"id":x.id,"student_user_id":x.student_user_id,"student_name":names.get(x.student_user_id,""),"session_id":x.session_id,"status":x.status,"note":x.note,"marked_at":x.marked_at} for x in entries[:200]]}
 
+@app.get("/api/v1/campus/transport")
+def campus_transport(user:User=Depends(require_roles("Campus Admin","Institution Admin")),db:Session=Depends(get_db)):
+    routes=db.scalars(select(TransportRoute).where(TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==user.campus_id).order_by(TransportRoute.name)).all()
+    vehicles=db.scalars(select(TransportVehicle).where(TransportVehicle.tenant_id==user.tenant_id,TransportVehicle.campus_id==user.campus_id).order_by(TransportVehicle.vehicle_number)).all()
+    allocations=db.scalars(select(StudentTransportAllocation).where(StudentTransportAllocation.tenant_id==user.tenant_id,StudentTransportAllocation.campus_id==user.campus_id)).all()
+    route_names={x.id:x.name for x in routes}; vehicle_names={x.id:x.vehicle_number for x in vehicles}
+    student_ids={x.student_user_id for x in allocations}
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(student_ids))).all() if student_ids else []
+    names={x.id:x.name for x in students}
+    return {"summary":{"routes":len(routes),"active_routes":sum(1 for x in routes if x.status=="Active"),"vehicles":len(vehicles),"active_vehicles":sum(1 for x in vehicles if x.status=="Active"),"allocations":len(allocations)},"routes":[{"id":x.id,"name":x.name,"code":x.code,"status":x.status} for x in routes],"vehicles":[{"id":x.id,"vehicle_number":x.vehicle_number,"label":x.label,"status":x.status} for x in vehicles],"allocations":[{"id":x.id,"student_name":names.get(x.student_user_id,""),"route_name":route_names.get(x.route_id,""),"vehicle_number":vehicle_names.get(x.vehicle_id,"") if x.vehicle_id else "","pickup_time":x.pickup_time,"drop_time":x.drop_time,"status":x.status} for x in allocations]}
+
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}

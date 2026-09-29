@@ -66,6 +66,18 @@ class Grievance(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class CommunicationMessage(Base):
+    __tablename__ = "communication_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    recipient_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    student_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(180))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="SENT")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
 class TeacherNote(Base):
     __tablename__ = "teacher_notes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

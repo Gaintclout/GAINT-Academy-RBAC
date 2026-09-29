@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -1419,6 +1419,33 @@ def _fee_payload(row:FeeLedger):
 def finance_students(user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
     rows=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Student",User.is_active==True).order_by(User.name)).all()
     return [{"id":x.id,"name":x.name,"email":x.email} for x in rows]
+
+@app.get("/api/v1/finance/concessions")
+def finance_concessions(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(FeeConcession).where(FeeConcession.tenant_id==user.tenant_id).order_by(FeeConcession.created_at.desc())).all()
+    result=[]
+    for row in rows:
+        ledger=db.get(FeeLedger,row.ledger_id); student=db.get(User,row.student_user_id)
+        result.append({"id":row.id,"ledger_id":row.ledger_id,"student_user_id":row.student_user_id,
+                       "student_name":student.name if student else f"Student {row.student_user_id}",
+                       "fee_code":ledger.fee_code if ledger else "","fee_title":ledger.title if ledger else "",
+                       "amount":float(row.amount),"reason":row.reason,"status":row.status,"created_at":row.created_at})
+    return result
+
+@app.post("/api/v1/finance/concessions")
+def create_finance_concession(payload:FeeConcessionIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+    ledger=db.get(FeeLedger,payload.ledger_id)
+    if not ledger or ledger.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    if ledger.status=="CANCELLED": raise HTTPException(409,"Cancelled fees cannot receive concessions")
+    amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
+    balance=max(Decimal("0.00"),ledger.amount_due-ledger.amount_paid)
+    if amount>balance: raise HTTPException(400,"Concession cannot exceed outstanding balance")
+    row=FeeConcession(tenant_id=user.tenant_id,ledger_id=ledger.id,student_user_id=ledger.student_user_id,
+                      amount=amount,reason=payload.reason.strip(),status="APPROVED",approved_by=user.id)
+    ledger.amount_due-=amount
+    ledger.status="PAID" if ledger.amount_paid>=ledger.amount_due else ("PARTIAL" if ledger.amount_paid>0 else "DUE")
+    db.add(row); audit(db,user,"CONCESSION","fee_ledger",f"ledger={ledger.id};amount={amount}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"ledger_id":row.ledger_id,"amount":float(row.amount),"status":row.status}
 
 @app.get("/api/v1/finance/payments")
 def finance_payments(user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):

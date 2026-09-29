@@ -170,3 +170,10 @@ class StudentAcademicManagementIn(BaseModel):
 class StudentGuardianManagementIn(BaseModel):
     parent_user_id: int
     relationship: str = Field(default="Guardian", min_length=2, max_length=40)
+
+
+class GrievanceIn(BaseModel):
+    category: str = "General"
+    subject: str
+    details: str
+    priority: str = "Normal"

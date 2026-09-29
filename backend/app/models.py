@@ -494,3 +494,19 @@ class FeePayment(Base):
     receipt_no: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     paid_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CampusVisitor(Base):
+    __tablename__ = "campus_visitors"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    purpose: Mapped[str] = mapped_column(String(250))
+    person_to_meet: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(30), default="CHECKED_IN", index=True)
+    checked_in_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    checked_out_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

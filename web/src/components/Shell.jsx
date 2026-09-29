@@ -22,6 +22,7 @@ import CampusInventory from "./CampusInventory";
 import CampusAssets from "./CampusAssets";
 import CampusEvents from "./CampusEvents";
 import CampusGrievance from "./CampusGrievance";
+import CampusReports from "./CampusReports";
 import Audit from "./Audit";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
@@ -102,6 +103,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : user.role === "Parent / Guardian" ? <ParentDashboard ui={ui} /> : user.role === "Accounts" ? <AccountsDashboard ui={ui} /> : user.role === "HR" ? <HRDashboard ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Admissions") {
     content = <StudentEnrollment />;
+  } else if (user.role === "Campus Admin" && active === "Reports") {
+    content = <CampusReports ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Grievance") {
     content = <CampusGrievance ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Events") {

@@ -294,3 +294,12 @@ def test_student_transport_is_self_scoped_and_student_only():
     data=response.json()
     assert "allocated" in data
     assert client.get("/api/v1/student/transport",headers=teacher_headers).status_code==403
+
+
+def test_student_library_is_self_scoped_and_student_only():
+    student_headers=_login("student@gaintacademy.com")
+    teacher_headers=_login("teacher@gaintacademy.com")
+    response=client.get("/api/v1/student/library",headers=student_headers)
+    assert response.status_code==200, response.text
+    assert isinstance(response.json(),list)
+    assert client.get("/api/v1/student/library",headers=teacher_headers).status_code==403

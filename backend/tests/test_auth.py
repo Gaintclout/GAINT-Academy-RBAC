@@ -397,9 +397,9 @@ def test_teacher_event_endpoint_is_teacher_only():
     assert client.get("/api/v1/teacher/events",headers=student).status_code==403
 
 
-def test_parent_role_endpoints_are_protected(client):
-    parent=auth_headers(client,"parent@gaintacademy.com")
-    student=auth_headers(client,"student@gaintacademy.com")
+def test_parent_role_endpoints_are_protected():
+    parent=_login("parent@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
     paths=[
         "/api/v1/parents/dashboard",
         "/api/v1/parents/children",
@@ -414,8 +414,8 @@ def test_parent_role_endpoints_are_protected(client):
         assert client.get(path,headers=student).status_code==403
 
 
-def test_parent_leave_rejects_unlinked_student_and_invalid_dates(client):
-    parent=auth_headers(client,"parent@gaintacademy.com")
+def test_parent_leave_rejects_unlinked_student_and_invalid_dates():
+    parent=_login("parent@gaintacademy.com")
     children=client.get("/api/v1/parents/children",headers=parent).json()
     if children:
         child_id=children[0]["id"]
@@ -423,7 +423,7 @@ def test_parent_leave_rejects_unlinked_student_and_invalid_dates(client):
             "student_user_id":child_id,"leave_type":"Sick",
             "start_date":"2026-10-10","end_date":"2026-10-09","reason":"Medical rest"})
         assert bad.status_code==400
-    users=client.get("/api/v1/admin/users",headers=auth_headers(client,"admin@gaintacademy.com")).json()
+    users=client.get("/api/v1/admin/users",headers=_login("admin@gaintacademy.com")).json()
     unlinked=next((x for x in users if x["role"]=="Student" and all(x["id"]!=y["id"] for y in children)),None)
     if unlinked:
         response=client.post("/api/v1/parents/leave",headers=parent,json={
@@ -432,8 +432,8 @@ def test_parent_leave_rejects_unlinked_student_and_invalid_dates(client):
         assert response.status_code==403
 
 
-def test_parent_message_rejects_invalid_teacher_context(client):
-    parent=auth_headers(client,"parent@gaintacademy.com")
+def test_parent_message_rejects_invalid_teacher_context():
+    parent=_login("parent@gaintacademy.com")
     children=client.get("/api/v1/parents/children",headers=parent).json()
     if not children:
         return

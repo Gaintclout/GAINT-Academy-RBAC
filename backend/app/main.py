@@ -718,6 +718,25 @@ def module_access(page: str, user: User = Depends(current_user)):
 def dashboard(user: User = Depends(current_user)):
     return dashboard_for(user.role)
 
+@app.get("/api/v1/hr/reports")
+def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}
+    staff=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role.in_(staff_roles))).all()
+    attendance=db.scalars(select(StaffAttendance).where(StaffAttendance.tenant_id==user.tenant_id)).all()
+    leaves=db.scalars(select(TeacherLeaveRequest).where(TeacherLeaveRequest.tenant_id==user.tenant_id)).all()
+    documents=db.scalars(select(StaffDocument).where(StaffDocument.tenant_id==user.tenant_id)).all()
+    candidates=db.scalars(select(RecruitmentCandidate).where(RecruitmentCandidate.tenant_id==user.tenant_id)).all()
+    reviews=db.scalars(select(StaffPerformanceReview).where(StaffPerformanceReview.tenant_id==user.tenant_id)).all()
+    ratings=[x.rating for x in reviews if x.status=="COMPLETED"]
+    return {
+      "workforce":{"total":len(staff),"active":sum(1 for x in staff if x.is_active),"teachers":sum(1 for x in staff if x.role=="Teacher")},
+      "attendance":{"total_records":len(attendance),"present":sum(1 for x in attendance if x.status=="PRESENT"),"absent":sum(1 for x in attendance if x.status=="ABSENT"),"leave":sum(1 for x in attendance if x.status=="LEAVE")},
+      "leave":{"pending":sum(1 for x in leaves if x.status=="PENDING"),"approved":sum(1 for x in leaves if x.status=="APPROVED"),"rejected":sum(1 for x in leaves if x.status=="REJECTED")},
+      "documents":{"total":len(documents),"active":sum(1 for x in documents if x.status=="ACTIVE"),"expired":sum(1 for x in documents if x.status=="EXPIRED")},
+      "recruitment":{"total":len(candidates),"interview":sum(1 for x in candidates if x.stage=="INTERVIEW"),"offered":sum(1 for x in candidates if x.stage=="OFFERED"),"hired":sum(1 for x in candidates if x.stage=="HIRED")},
+      "performance":{"reviews":len(reviews),"completed":len(ratings),"average_rating":round(sum(ratings)/len(ratings),2) if ratings else None}
+    }
+
 @app.get("/api/v1/hr/performance")
 def hr_performance(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     rows=db.scalars(select(StaffPerformanceReview).where(StaffPerformanceReview.tenant_id==user.tenant_id).order_by(StaffPerformanceReview.created_at.desc())).all()

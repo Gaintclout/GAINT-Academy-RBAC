@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -717,6 +717,33 @@ def module_access(page: str, user: User = Depends(current_user)):
 @app.get("/api/v1/dashboard")
 def dashboard(user: User = Depends(current_user)):
     return dashboard_for(user.role)
+
+@app.get("/api/v1/hr/recruitment")
+def hr_recruitment(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(RecruitmentCandidate).where(RecruitmentCandidate.tenant_id==user.tenant_id).order_by(RecruitmentCandidate.updated_at.desc())).all()
+    return [{"id":x.id,"name":x.name,"email":x.email,"phone":x.phone,"position":x.position,"stage":x.stage,"source":x.source,"notes":x.notes,"created_at":x.created_at,"updated_at":x.updated_at} for x in rows]
+
+@app.post("/api/v1/hr/recruitment")
+def create_hr_candidate(payload:RecruitmentCandidateIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
+    email=payload.email.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"): raise HTTPException(400,"Invalid email address")
+    stages={"APPLIED","SCREENING","INTERVIEW","OFFERED","HIRED","REJECTED","WITHDRAWN"}
+    stage=payload.stage.strip().upper()
+    if stage not in stages: raise HTTPException(400,"Invalid recruitment stage")
+    row=RecruitmentCandidate(tenant_id=user.tenant_id,name=payload.name.strip(),email=email,phone=payload.phone.strip(),position=payload.position.strip(),stage=stage,source=payload.source.strip(),notes=payload.notes.strip(),recorded_by=user.id)
+    db.add(row);audit(db,user,"CREATE","recruitment",f"candidate={email};position={row.position}");db.commit();db.refresh(row)
+    return {"id":row.id,"name":row.name,"email":row.email,"position":row.position,"stage":row.stage}
+
+@app.patch("/api/v1/hr/recruitment/{candidate_id}")
+def update_hr_candidate(candidate_id:int,payload:RecruitmentStageIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
+    row=db.get(RecruitmentCandidate,candidate_id)
+    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Candidate not found")
+    stage=payload.stage.strip().upper()
+    if stage not in {"APPLIED","SCREENING","INTERVIEW","OFFERED","HIRED","REJECTED","WITHDRAWN"}: raise HTTPException(400,"Invalid recruitment stage")
+    row.stage=stage
+    if payload.notes is not None: row.notes=payload.notes.strip()
+    row.updated_at=dt.datetime.utcnow();audit(db,user,"UPDATE","recruitment",f"candidate={row.id};stage={stage}");db.commit();db.refresh(row)
+    return {"id":row.id,"stage":row.stage,"notes":row.notes,"updated_at":row.updated_at}
 
 @app.get("/api/v1/hr/documents")
 def hr_documents(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

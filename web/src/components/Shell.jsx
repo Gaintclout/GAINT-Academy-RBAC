@@ -15,6 +15,7 @@ import LiveSafetyMap from "./LiveSafetyMap";
 import CampusDashboard from "./CampusDashboard";
 import CampusStudents from "./CampusStudents";
 import CampusStaff from "./CampusStaff";
+import CampusAttendance from "./CampusAttendance";
 import Audit from "./Audit";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
@@ -95,6 +96,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = user.role === "Student" ? <StudentDashboard user={user} ui={ui} /> : user.role === "Parent / Guardian" ? <ParentDashboard ui={ui} /> : user.role === "Accounts" ? <AccountsDashboard ui={ui} /> : user.role === "HR" ? <HRDashboard ui={ui} /> : <InstitutionRoleDashboard user={user} ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Admissions") {
     content = <StudentEnrollment />;
+  } else if (user.role === "Campus Admin" && active === "Campus Attendance") {
+    content = <CampusAttendance ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Staff") {
     content = <CampusStaff ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Students") {

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation
 from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
@@ -324,6 +324,31 @@ def student_profile(user:User=Depends(require_roles("Student")),db:Session=Depen
         "status":"Active" if user.is_active else "Withdrawn",
         "academics":academics,
         "guardians":guardians,
+    }
+
+@app.get("/api/v1/student/transport")
+def student_transport(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    allocation=db.scalar(select(StudentTransportAllocation).where(
+        StudentTransportAllocation.tenant_id==user.tenant_id,
+        StudentTransportAllocation.student_user_id==user.id,
+    ))
+    if not allocation:
+        return {"allocated":False}
+    route=db.get(TransportRoute,allocation.route_id)
+    stop=db.get(TransportStop,allocation.stop_id)
+    vehicle=db.get(TransportVehicle,allocation.vehicle_id) if allocation.vehicle_id else None
+    if not route or route.tenant_id!=user.tenant_id or not stop or stop.tenant_id!=user.tenant_id:
+        raise HTTPException(409,"Transport allocation references unavailable route or stop")
+    if vehicle and vehicle.tenant_id!=user.tenant_id:
+        raise HTTPException(409,"Transport allocation references unavailable vehicle")
+    return {
+        "allocated":True,
+        "route":{"id":route.id,"name":route.name,"code":route.code},
+        "vehicle":{"id":vehicle.id,"vehicle_number":vehicle.vehicle_number,"label":vehicle.label} if vehicle else None,
+        "stop":{"id":stop.id,"name":stop.name,"stop_order":stop.stop_order},
+        "pickup_time":allocation.pickup_time,
+        "drop_time":allocation.drop_time,
+        "status":allocation.status,
     }
 
 @app.get("/api/v1/admissions/students/{student_id}/history")

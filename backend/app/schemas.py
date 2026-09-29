@@ -192,3 +192,10 @@ class TeacherMessageIn(BaseModel):
     student_user_id: Optional[int] = None
     subject: str = Field(min_length=2, max_length=180)
     body: str = Field(min_length=1)
+
+
+class TeacherLeaveIn(BaseModel):
+    leave_type: str = Field(default="Casual", min_length=2, max_length=60)
+    start_date: str
+    end_date: str
+    reason: str = Field(min_length=2)

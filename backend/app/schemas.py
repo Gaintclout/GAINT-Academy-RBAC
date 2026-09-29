@@ -320,3 +320,8 @@ class CampusEventIn(BaseModel):
     audience_role: str = "ALL"
     registration_required: bool = False
     registration_deadline: Optional[str] = None
+
+
+class CampusGrievanceUpdateIn(BaseModel):
+    status: str
+    latest_update: str = Field(min_length=2, max_length=2000)

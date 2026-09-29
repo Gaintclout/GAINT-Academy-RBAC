@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -824,6 +824,25 @@ def campus_asset_update(asset_id:int,payload:CampusAssetUpdate,user:User=Depends
     row.location=payload.location; row.assigned_to=payload.assigned_to; row.condition=payload.condition; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
     audit(db,user,"ASSET_UPDATE",f"campus_asset:{row.id}",f"condition={row.condition};status={row.status}"); db.commit()
     return {"id":row.id,"condition":row.condition,"status":row.status}
+
+@app.get("/api/v1/campus/events")
+def campus_events(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(AcademyEvent).where(AcademyEvent.tenant_id==user.tenant_id,AcademyEvent.campus_id==user.campus_id).order_by(AcademyEvent.starts_at.desc())).all()
+    return [{"id":x.id,"title":x.title,"event_type":x.event_type,"venue":x.venue,"starts_at":x.starts_at,"ends_at":x.ends_at,"audience_role":x.audience_role,"registration_required":x.registration_required,"registration_deadline":x.registration_deadline,"status":x.status} for x in rows]
+
+@app.post("/api/v1/campus/events")
+def campus_event_create(payload:CampusEventIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    try:
+        starts=dt.datetime.fromisoformat(payload.starts_at); ends=dt.datetime.fromisoformat(payload.ends_at)
+        deadline=dt.datetime.fromisoformat(payload.registration_deadline) if payload.registration_deadline else None
+    except ValueError: raise HTTPException(400,"Invalid event date/time")
+    if ends<=starts: raise HTTPException(400,"Event end must be after start")
+    allowed={"ALL","Student","Teacher","Parent","Parent / Guardian"}
+    if payload.audience_role not in allowed: raise HTTPException(400,"Invalid audience role")
+    if deadline and deadline>starts: raise HTTPException(400,"Registration deadline must be before event start")
+    row=AcademyEvent(tenant_id=user.tenant_id,campus_id=user.campus_id,title=payload.title,event_type=payload.event_type,venue=payload.venue,starts_at=starts,ends_at=ends,organizer_user_id=user.id,audience_role=payload.audience_role,registration_required=payload.registration_required,registration_deadline=deadline,status="Published")
+    db.add(row); audit(db,user,"EVENT_CREATE","campus_event",payload.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

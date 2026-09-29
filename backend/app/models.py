@@ -49,6 +49,32 @@ class Record(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
+class LibraryBook(Base):
+    __tablename__ = "library_books"
+    __table_args__ = (UniqueConstraint("tenant_id","accession_no", name="uq_library_book_accession"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    accession_no: Mapped[str] = mapped_column(String(80))
+    isbn: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    author: Mapped[str] = mapped_column(String(160), default="")
+    category: Mapped[str] = mapped_column(String(100), default="")
+    status: Mapped[str] = mapped_column(String(30), default="Available")
+
+class LibraryLoan(Base):
+    __tablename__ = "library_loans"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(index=True)
+    campus_id: Mapped[int] = mapped_column(default=1, index=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("library_books.id"), index=True)
+    borrower_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    issued_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    due_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    returned_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    fine_amount: Mapped[float] = mapped_column(Numeric(12,2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Issued")
+
 class TransportRoute(Base):
     __tablename__ = "transport_routes"
     id: Mapped[int] = mapped_column(primary_key=True)

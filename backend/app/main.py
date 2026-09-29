@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -799,6 +799,31 @@ def campus_inventory_update(item_id:int,payload:CampusInventoryUpdate,user:User=
     row.quantity=payload.quantity; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
     audit(db,user,"INVENTORY_UPDATE",f"campus_inventory:{row.id}",f"quantity={row.quantity};status={row.status}"); db.commit()
     return {"id":row.id,"quantity":row.quantity,"status":row.status}
+
+@app.get("/api/v1/campus/assets")
+def campus_assets(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id,CampusAsset.campus_id==user.campus_id).order_by(CampusAsset.name)).all()
+    return [{"id":x.id,"asset_code":x.asset_code,"name":x.name,"category":x.category,"serial_number":x.serial_number,"location":x.location,"assigned_to":x.assigned_to,"condition":x.condition,"status":x.status,"notes":x.notes} for x in rows]
+
+@app.post("/api/v1/campus/assets")
+def campus_asset_create(payload:CampusAssetIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if payload.condition not in {"GOOD","FAIR","DAMAGED","REPAIR"}: raise HTTPException(400,"Invalid asset condition")
+    if payload.status not in {"ACTIVE","INACTIVE","RETIRED"}: raise HTTPException(400,"Invalid asset status")
+    duplicate=db.scalar(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id,CampusAsset.campus_id==user.campus_id,CampusAsset.asset_code==payload.asset_code))
+    if duplicate: raise HTTPException(409,"Asset code already exists in this campus")
+    row=CampusAsset(tenant_id=user.tenant_id,campus_id=user.campus_id,recorded_by=user.id,**payload.model_dump())
+    db.add(row); audit(db,user,"ASSET_CREATE","campus_asset",payload.asset_code); db.commit(); db.refresh(row)
+    return {"id":row.id}
+
+@app.patch("/api/v1/campus/assets/{asset_id}")
+def campus_asset_update(asset_id:int,payload:CampusAssetUpdate,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusAsset).where(CampusAsset.id==asset_id,CampusAsset.tenant_id==user.tenant_id,CampusAsset.campus_id==user.campus_id))
+    if not row: raise HTTPException(404,"Asset not found")
+    if payload.condition not in {"GOOD","FAIR","DAMAGED","REPAIR"}: raise HTTPException(400,"Invalid asset condition")
+    if payload.status not in {"ACTIVE","INACTIVE","RETIRED"}: raise HTTPException(400,"Invalid asset status")
+    row.location=payload.location; row.assigned_to=payload.assigned_to; row.condition=payload.condition; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
+    audit(db,user,"ASSET_UPDATE",f"campus_asset:{row.id}",f"condition={row.condition};status={row.status}"); db.commit()
+    return {"id":row.id,"condition":row.condition,"status":row.status}
 
 @app.get("/api/v1/hr/reports")
 def hr_reports(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

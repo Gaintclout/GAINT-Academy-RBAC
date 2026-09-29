@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -717,6 +717,26 @@ def module_access(page: str, user: User = Depends(current_user)):
 @app.get("/api/v1/dashboard")
 def dashboard(user: User = Depends(current_user)):
     return dashboard_for(user.role)
+
+@app.get("/api/v1/hr/documents")
+def hr_documents(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(StaffDocument).where(StaffDocument.tenant_id==user.tenant_id).order_by(StaffDocument.created_at.desc())).all()
+    people={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()}
+    return [{"id":x.id,"staff_user_id":x.staff_user_id,"staff_name":people[x.staff_user_id].name if x.staff_user_id in people else "Unknown","document_type":x.document_type,"title":x.title,"document_ref":x.document_ref,"expiry_date":x.expiry_date,"status":x.status,"notes":x.notes,"created_at":x.created_at} for x in rows]
+
+@app.post("/api/v1/hr/documents")
+def create_hr_document(payload:StaffDocumentIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
+    target=db.get(User,payload.staff_user_id)
+    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"}: raise HTTPException(400,"Invalid staff member")
+    expiry=None
+    if payload.expiry_date:
+        try: expiry=dt.datetime.fromisoformat(payload.expiry_date)
+        except ValueError: raise HTTPException(400,"Invalid expiry date")
+    status=payload.status.strip().upper()
+    if status not in {"ACTIVE","PENDING","EXPIRED","ARCHIVED"}: raise HTTPException(400,"Invalid document status")
+    row=StaffDocument(tenant_id=user.tenant_id,staff_user_id=target.id,document_type=payload.document_type.strip(),title=payload.title.strip(),document_ref=payload.document_ref.strip(),expiry_date=expiry,status=status,notes=payload.notes.strip(),recorded_by=user.id)
+    db.add(row);audit(db,user,"CREATE","staff_document",f"staff={target.id};type={row.document_type}");db.commit();db.refresh(row)
+    return {"id":row.id,"staff_user_id":row.staff_user_id,"document_type":row.document_type,"title":row.title,"status":row.status}
 
 @app.get("/api/v1/hr/attendance")
 def hr_attendance(user:User=Depends(require_roles("HR","Institution Admin","Auditor")),db:Session=Depends(get_db)):

@@ -2126,6 +2126,16 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/transport")
+def admin_transport(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    routes=db.scalars(select(TransportRoute).where(TransportRoute.tenant_id==user.tenant_id).order_by(TransportRoute.name)).all()
+    vehicles=db.scalars(select(TransportVehicle).where(TransportVehicle.tenant_id==user.tenant_id).order_by(TransportVehicle.vehicle_number)).all()
+    allocations=db.scalars(select(StudentTransportAllocation).where(StudentTransportAllocation.tenant_id==user.tenant_id)).all()
+    route_map={x.id:x for x in routes}; vehicle_map={x.id:x for x in vehicles}
+    student_ids={x.student_user_id for x in allocations}; students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(student_ids))).all() if student_ids else []
+    names={x.id:x.name for x in students}
+    return {"summary":{"routes":len(routes),"active_routes":sum(x.status=="Active" for x in routes),"vehicles":len(vehicles),"active_vehicles":sum(x.status=="Active" for x in vehicles),"allocations":len(allocations),"active_allocations":sum(x.status=="Active" for x in allocations)},"routes":[{"id":x.id,"campus_id":x.campus_id,"name":x.name,"code":x.code,"status":x.status} for x in routes],"vehicles":[{"id":x.id,"campus_id":x.campus_id,"vehicle_number":x.vehicle_number,"label":x.label,"status":x.status} for x in vehicles],"allocations":[{"id":x.id,"campus_id":x.campus_id,"student_name":names.get(x.student_user_id,f"Student #{x.student_user_id}"),"route_name":route_map[x.route_id].name if x.route_id in route_map else "","vehicle_number":vehicle_map[x.vehicle_id].vehicle_number if x.vehicle_id in vehicle_map else "","pickup_time":x.pickup_time,"drop_time":x.drop_time,"status":x.status} for x in allocations]}
+
 @app.get("/api/v1/admin/grievances")
 def admin_grievances(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     rows=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id).order_by(Grievance.created_at.desc())).all()

@@ -161,6 +161,22 @@ def create_academic_unit(payload: AcademicUnitIn, user: User = Depends(require_r
     db.add(row); audit(db,user,"CREATE","academic_structure",f"{unit_type}:{row.name}"); db.commit(); db.refresh(row)
     return {"id":row.id,"unit_type":row.unit_type,"name":row.name,"code":row.code,"parent_id":row.parent_id,"campus_id":row.campus_id,"status":row.status}
 
+@app.put("/api/v1/academic-structure/{unit_id}")
+def update_academic_unit(unit_id:int,payload:AcademicUnitIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(AcademicUnit).where(AcademicUnit.id==unit_id,AcademicUnit.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Academic unit not found")
+    if payload.unit_type.strip().upper()!=row.unit_type: raise HTTPException(400,"Academic unit type cannot be changed")
+    code=payload.code.strip().upper()
+    duplicate=db.scalar(select(AcademicUnit.id).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.code==code,AcademicUnit.id!=unit_id))
+    if duplicate: raise HTTPException(409,"Academic unit code already exists in this institution")
+    if payload.parent_id!=row.parent_id: raise HTTPException(400,"Use academic structure workflow to change hierarchy")
+    if payload.campus_id!=row.campus_id: raise HTTPException(400,"Campus cannot be changed after unit creation")
+    status=payload.status.strip().title()
+    if status not in {"Active","Inactive"}: raise HTTPException(400,"Invalid academic unit status")
+    row.name=payload.name.strip(); row.code=code; row.status=status
+    audit(db,user,"UPDATE","academic_structure",f"{row.unit_type}:{row.id}:{row.name}:{status}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"unit_type":row.unit_type,"name":row.name,"code":row.code,"parent_id":row.parent_id,"campus_id":row.campus_id,"status":row.status}
+
 @app.delete("/api/v1/academic-structure/{unit_id}")
 def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     row=db.get(AcademicUnit,unit_id)

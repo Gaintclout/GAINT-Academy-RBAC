@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2290,6 +2290,26 @@ def admin_library(user:User=Depends(require_roles("Institution Admin")),db:Sessi
     borrowers=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(borrower_ids))).all() if borrower_ids else []
     borrower_map={x.id:x for x in borrowers}; now=dt.datetime.utcnow()
     return {"summary":{"books":len(books),"available":sum(x.status=="Available" for x in books),"loans":len(loans),"active_loans":sum(x.returned_at is None for x in loans),"overdue":sum(x.returned_at is None and x.due_at<now for x in loans),"fines":round(sum(float(x.fine_amount or 0) for x in loans),2)},"books":[{"id":x.id,"campus_id":x.campus_id,"accession_no":x.accession_no,"isbn":x.isbn,"title":x.title,"author":x.author,"category":x.category,"status":x.status} for x in books],"loans":[{"id":x.id,"campus_id":x.campus_id,"book_title":book_map[x.book_id].title if x.book_id in book_map else f"Book #{x.book_id}","borrower_name":borrower_map[x.borrower_user_id].name if x.borrower_user_id in borrower_map else f"User #{x.borrower_user_id}","borrower_role":borrower_map[x.borrower_user_id].role if x.borrower_user_id in borrower_map else "Unknown","issued_at":x.issued_at,"due_at":x.due_at,"returned_at":x.returned_at,"fine_amount":float(x.fine_amount or 0),"status":x.status,"overdue":x.returned_at is None and x.due_at<now} for x in loans]}
+
+@app.post("/api/v1/admin/library/books")
+def admin_library_book_create(payload:AdminLibraryBookIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    campus_exists=db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==payload.campus_id).limit(1))
+    if not campus_exists: raise HTTPException(404,"Campus not found in this institution")
+    accession=payload.accession_no.strip()
+    if db.scalar(select(LibraryBook.id).where(LibraryBook.tenant_id==user.tenant_id,LibraryBook.accession_no==accession)): raise HTTPException(409,"Accession number already exists")
+    row=LibraryBook(tenant_id=user.tenant_id,campus_id=payload.campus_id,accession_no=accession,isbn=payload.isbn.strip() if payload.isbn else None,title=payload.title.strip(),author=payload.author.strip(),category=payload.category.strip())
+    db.add(row); audit(db,user,"CREATE","Library Book",f"{row.accession_no}:{row.title}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"accession_no":row.accession_no,"status":row.status}
+
+@app.patch("/api/v1/admin/library/books/{book_id}")
+def admin_library_book_update(book_id:int,payload:AdminLibraryBookUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(LibraryBook).where(LibraryBook.id==book_id,LibraryBook.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Library book not found")
+    status=payload.status.strip().title()
+    if status not in {"Available","Issued","Lost","Damaged","Inactive"}: raise HTTPException(400,"Invalid library book status")
+    row.title=payload.title.strip(); row.author=payload.author.strip(); row.category=payload.category.strip(); row.isbn=payload.isbn.strip() if payload.isbn else None; row.status=status
+    audit(db,user,"UPDATE","Library Book",f"{row.accession_no}:{status}"); db.commit()
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/admin/transport")
 def admin_transport(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

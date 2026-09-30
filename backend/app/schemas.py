@@ -415,3 +415,10 @@ class AdminClassSessionUpdate(BaseModel):
     ends_at: str
     room: str = Field(default="", max_length=120)
     status: str = Field(default="Scheduled", max_length=30)
+
+
+class AdminInventoryIn(CampusInventoryIn):
+    campus_id: int = Field(ge=1)
+
+class AdminAssetIn(CampusAssetIn):
+    campus_id: int = Field(ge=1)

@@ -592,3 +592,33 @@ class HostelAllocation(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     allocated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class HealthRecord(Base):
+    __tablename__ = "health_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    person_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    blood_group: Mapped[str] = mapped_column(String(10), default="")
+    allergies: Mapped[str] = mapped_column(Text, default="")
+    medical_conditions: Mapped[str] = mapped_column(Text, default="")
+    emergency_contact_name: Mapped[str] = mapped_column(String(120), default="")
+    emergency_contact_phone: Mapped[str] = mapped_column(String(40), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+class HealthVisit(Base):
+    __tablename__ = "health_visits"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    person_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    visit_type: Mapped[str] = mapped_column(String(40), default="GENERAL")
+    complaint: Mapped[str] = mapped_column(Text)
+    action_taken: Mapped[str] = mapped_column(Text, default="")
+    disposition: Mapped[str] = mapped_column(String(40), default="RETURNED")
+    visited_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

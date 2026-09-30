@@ -32,6 +32,7 @@ import AuditorExportReports from "./AuditorExportReports";
 import StudentSafety from "./StudentSafety";
 import StudentDashboard from "./StudentDashboard";
 import StudentFinance from "./StudentFinance";
+import StudentLeave from "./StudentLeave";
 import AccountsFinance from "./AccountsFinance";
 import AccountsDashboard from "./AccountsDashboard";
 import AccountsConcessions from "./AccountsConcessions";
@@ -265,6 +266,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <ParentTracking />;
   } else if (user.role === "Campus Admin" && active === "Live Safety Map") {
     content = <LiveSafetyMap />;
+  } else if (user.role === "Student" && active === "Leave Request") {
+    content = <StudentLeave ui={ui} />;
   } else if (user.role === "Student" && active === "My Safety") {
     content = <StudentSafety />;
   } else if (user.role === "Auditor" && active === "Export Reports") {

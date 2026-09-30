@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2441,7 +2441,38 @@ def admin_lms_overview(user:User=Depends(require_roles("Institution Admin")),db:
     for w in works:
         counts[w.work_type]=counts.get(w.work_type,0)+1; subs=by_work.get(w.id,[])
         rows.append({"id":w.id,"work_type":w.work_type,"title":w.title,"unit_name":units[w.unit_id].name if w.unit_id in units else f"Unit #{w.unit_id}","teacher_name":teachers[w.teacher_user_id].name if w.teacher_user_id in teachers else f"Teacher #{w.teacher_user_id}","max_marks":w.max_marks,"due_at":w.due_at,"status":w.status,"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in subs),"graded":sum(s.status=="GRADED" for s in subs)})
-    return {"summary":{"learning_items":len(works),"homework":counts.get("HOMEWORK",0),"assignments":counts.get("ASSIGNMENT",0),"exams":counts.get("EXAM",0),"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in submissions),"graded":sum(s.status=="GRADED" for s in submissions)},"items":rows}
+    available_units=[x for x in units.values() if x.unit_type in {"COURSE","SECTION_BATCH"} and x.status=="Active"]
+    available_teachers=[x for x in teachers.values() if x.is_active]
+    return {"summary":{"learning_items":len(works),"homework":counts.get("HOMEWORK",0),"assignments":counts.get("ASSIGNMENT",0),"exams":counts.get("EXAM",0),"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in submissions),"graded":sum(s.status=="GRADED" for s in submissions)},"items":rows,"units":[{"id":x.id,"name":x.name,"code":x.code,"campus_id":x.campus_id} for x in available_units],"teachers":[{"id":x.id,"name":x.name,"campus_id":x.campus_id} for x in available_teachers]}
+
+def _admin_lms_context(db,user,unit_id,teacher_id):
+    unit=db.scalar(select(AcademicUnit).where(AcademicUnit.id==unit_id,AcademicUnit.tenant_id==user.tenant_id))
+    teacher=db.scalar(select(User).where(User.id==teacher_id,User.tenant_id==user.tenant_id,User.role=="Teacher",User.is_active==True))
+    if not unit or unit.unit_type not in {"COURSE","SECTION_BATCH"}: raise HTTPException(400,"Invalid course or section")
+    if not teacher: raise HTTPException(400,"Invalid active teacher")
+    if unit.campus_id!=teacher.campus_id: raise HTTPException(409,"Teacher and academic unit must belong to the same campus")
+    return unit,teacher
+
+@app.post("/api/v1/admin/lms")
+def admin_lms_create(payload:AdminAcademicWorkIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    kind=payload.work_type.strip().upper()
+    if kind not in {"HOMEWORK","ASSIGNMENT"}: raise HTTPException(400,"Use Exams & Results to create exams")
+    _admin_lms_context(db,user,payload.unit_id,payload.teacher_user_id)
+    row=AcademicWork(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=payload.teacher_user_id,work_type=kind,title=payload.title.strip(),description=payload.description.strip(),max_marks=payload.max_marks,due_at=_parse_due_at(payload.due_at),status="PUBLISHED")
+    db.add(row); audit(db,user,"CREATE_ADMIN",kind,row.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.put("/api/v1/admin/lms/{work_id}")
+def admin_lms_update(work_id:int,payload:AdminAcademicWorkUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(AcademicWork).where(AcademicWork.id==work_id,AcademicWork.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Learning item not found")
+    if row.work_type=="EXAM": raise HTTPException(400,"Manage exams from Exams & Results")
+    _admin_lms_context(db,user,row.unit_id,payload.teacher_user_id)
+    status=payload.status.strip().upper()
+    if status not in {"PUBLISHED","DRAFT","CLOSED"}: raise HTTPException(400,"Invalid learning item status")
+    row.teacher_user_id=payload.teacher_user_id; row.title=payload.title.strip(); row.description=payload.description.strip(); row.max_marks=payload.max_marks; row.due_at=_parse_due_at(payload.due_at); row.status=status
+    audit(db,user,"UPDATE_ADMIN",row.work_type,f"{row.id}:{row.title}:{status}"); db.commit()
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/admin/communication")
 def admin_communication(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

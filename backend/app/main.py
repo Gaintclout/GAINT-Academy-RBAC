@@ -2126,6 +2126,21 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/lms-overview")
+def admin_lms_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    works=db.scalars(select(AcademicWork).where(AcademicWork.tenant_id==user.tenant_id).order_by(AcademicWork.id.desc())).all()
+    submissions=db.scalars(select(StudentAcademicWork).where(StudentAcademicWork.tenant_id==user.tenant_id)).all()
+    units={x.id:x for x in db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id)).all()}
+    teachers={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Teacher")).all()}
+    by_work={}
+    for s in submissions: by_work.setdefault(s.work_id,[]).append(s)
+    counts={}
+    rows=[]
+    for w in works:
+        counts[w.work_type]=counts.get(w.work_type,0)+1; subs=by_work.get(w.id,[])
+        rows.append({"id":w.id,"work_type":w.work_type,"title":w.title,"unit_name":units[w.unit_id].name if w.unit_id in units else f"Unit #{w.unit_id}","teacher_name":teachers[w.teacher_user_id].name if w.teacher_user_id in teachers else f"Teacher #{w.teacher_user_id}","max_marks":w.max_marks,"due_at":w.due_at,"status":w.status,"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in subs),"graded":sum(s.status=="GRADED" for s in subs)})
+    return {"summary":{"learning_items":len(works),"homework":counts.get("HOMEWORK",0),"assignments":counts.get("ASSIGNMENT",0),"exams":counts.get("EXAM",0),"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in submissions),"graded":sum(s.status=="GRADED" for s in submissions)},"items":rows}
+
 @app.get("/api/v1/admin/communication")
 def admin_communication(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     rows=db.scalars(select(CommunicationMessage).where(CommunicationMessage.tenant_id==user.tenant_id).order_by(CommunicationMessage.created_at.desc()).limit(500)).all()

@@ -120,3 +120,31 @@ def test_parent_children_hide_inactive_linked_student():
     assert all(x["id"]!=i["student1@test.local"] for x in rows.json())
     assert client.get(f"/api/v1/parents/children/{i['student1@test.local']}/fees",headers=parent).status_code==404
     assert client.get(f"/api/v1/parents/children/{i['student1@test.local']}/location",headers=parent).status_code==404
+
+
+def test_accounts_reject_zero_negative_and_paid_balance_transactions():
+    i=ids(); h=auth("accounts1@test.local")
+    fee=create_fee(h,i["student1@test.local"],"VALIDATE",50).json()
+    assert client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":0,"reference":"ZERO-PAY"}).status_code in (400,422)
+    assert client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":-1,"reference":"NEG-PAY"}).status_code in (400,422)
+    assert client.post("/api/v1/finance/concessions",headers=h,json={"ledger_id":fee["id"],"amount":0,"reason":"Invalid"}).status_code in (400,422)
+    paid=client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":50,"reference":"FULL-PAY"})
+    assert paid.status_code==200
+    assert client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":1,"reference":"EXTRA-PAY"}).status_code==409
+    payment_id=client.get("/api/v1/finance/payments",headers=h).json()[0]["id"]
+    assert client.post("/api/v1/finance/refunds",headers=h,json={"payment_id":payment_id,"amount":0,"reason":"Invalid","reference":"ZERO-REF"}).status_code in (400,422)
+
+
+def test_accounts_report_rejects_reversed_date_range():
+    h=auth("accounts1@test.local")
+    response=client.get("/api/v1/finance/report?start_date=2026-10-10&end_date=2026-10-01",headers=h)
+    assert response.status_code==400
+
+
+def test_accounts_read_and_write_rbac_boundaries():
+    accounts=auth("accounts1@test.local"); student=auth("student1@test.local")
+    for path in ("/api/v1/finance/students","/api/v1/finance/summary","/api/v1/finance/payments","/api/v1/finance/concessions","/api/v1/finance/refunds","/api/v1/finance/reconciliations","/api/v1/finance/report"):
+        assert client.get(path,headers=accounts).status_code==200
+        assert client.get(path,headers=student).status_code==403
+    i=ids()
+    assert create_fee(student,i["student1@test.local"],"BLOCKED",10).status_code==403

@@ -2236,7 +2236,9 @@ def admin_inventory_assets(user:User=Depends(require_roles("Institution Admin"))
 def admin_inventory_create(payload:AdminInventoryIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     if not db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==payload.campus_id).limit(1)): raise HTTPException(404,"Campus not found in this institution")
     if payload.status not in {"ACTIVE","INACTIVE"}: raise HTTPException(400,"Invalid inventory status")
-    data=payload.model_dump(); campus_id=data.pop("campus_id")
+    item_code=payload.item_code.strip()
+    if item_code and db.scalar(select(CampusInventoryItem.id).where(CampusInventoryItem.tenant_id==user.tenant_id,CampusInventoryItem.campus_id==payload.campus_id,CampusInventoryItem.item_code==item_code)): raise HTTPException(409,"Inventory item code already exists in this campus")
+    data=payload.model_dump(); campus_id=data.pop("campus_id"); data["item_code"]=item_code
     row=CampusInventoryItem(tenant_id=user.tenant_id,campus_id=campus_id,recorded_by=user.id,**data)
     db.add(row); audit(db,user,"INVENTORY_CREATE_ADMIN","campus_inventory",payload.name); db.commit(); db.refresh(row)
     return {"id":row.id}

@@ -2126,6 +2126,32 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/reports")
+def admin_reports(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()
+    students=[x for x in users if x.role=="Student"]
+    staff=[x for x in users if x.role in {"Teacher","Accounts","HR","Campus Admin","Auditor"}]
+    units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id)).all()
+    assignments=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id)).all()
+    attendance=db.scalars(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id)).all()
+    fees=db.scalars(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)).all()
+    payments=db.scalars(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id)).all()
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id)).all()
+    events=db.scalars(select(AcademyEvent).where(AcademyEvent.tenant_id==user.tenant_id)).all()
+    audits=db.scalars(select(Audit).where(Audit.tenant_id==user.tenant_id)).all()
+    due=sum(float(x.amount_due or 0) for x in fees)
+    paid=sum(float(x.amount_paid or 0) for x in fees)
+    reports=[
+      {"key":"students","name":"Student & Enrollment Report","category":"Academics","records":len(students),"detail":f"{len(assignments)} academic assignments across {len(units)} units"},
+      {"key":"staff","name":"Staff & Role Report","category":"Administration","records":len(staff),"detail":f"{sum(x.is_active for x in staff)} active staff accounts"},
+      {"key":"attendance","name":"Attendance Report","category":"Academics","records":len(attendance),"detail":f"{sum(x.status=='PRESENT' for x in attendance)} present entries recorded"},
+      {"key":"finance","name":"Fees & Collection Report","category":"Finance","records":len(fees),"detail":f"Due {due:.2f} • Paid {paid:.2f} • {len(payments)} payments"},
+      {"key":"grievances","name":"Grievance Report","category":"Operations","records":len(grievances),"detail":f"{sum(x.status in {'Open','In Progress'} for x in grievances)} open/in progress"},
+      {"key":"events","name":"Events Report","category":"Operations","records":len(events),"detail":"Institution events and registrations overview"},
+      {"key":"audit","name":"Audit Activity Report","category":"Governance","records":len(audits),"detail":"Recorded privileged and operational actions"},
+    ]
+    return {"summary":{"students":len(students),"staff":len(staff),"academic_units":len(units),"fee_collection":paid,"open_grievances":sum(x.status in {"Open","In Progress"} for x in grievances)},"reports":reports}
+
 @app.get("/api/v1/auditor/dashboard")
 def auditor_dashboard(user:User=Depends(require_roles("Auditor")),db:Session=Depends(get_db)):
     audits=db.scalars(select(Audit).where(Audit.tenant_id==user.tenant_id).order_by(Audit.id.desc())).all()

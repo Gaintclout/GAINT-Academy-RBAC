@@ -615,6 +615,7 @@ def student_transport(user:User=Depends(require_roles("Student")),db:Session=Dep
     allocation=db.scalar(select(StudentTransportAllocation).where(
         StudentTransportAllocation.tenant_id==user.tenant_id,
         StudentTransportAllocation.student_user_id==user.id,
+        StudentTransportAllocation.status=="Active",
     ))
     if not allocation:
         return {"allocated":False}

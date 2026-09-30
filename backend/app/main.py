@@ -2139,16 +2139,22 @@ def update_location(
     db:Session=Depends(get_db),
 ):
     allowed_contexts={"TRANSPORT","SCHOOL_HOURS","FIELD_TRIP","SOS"}
-    if payload.tracking_context not in allowed_contexts:
+    context=payload.tracking_context.strip().upper()
+    if context not in allowed_contexts:
         raise HTTPException(400,"Tracking context is not allowed")
+    source=payload.source.strip().upper()
+    if source not in {"MOBILE","GPS"}: raise HTTPException(400,"Location source is not allowed")
+    status=payload.status.strip().upper()
+    if status not in {"ACTIVE","SOS"}: raise HTTPException(400,"Location status is not allowed")
+    data=payload.model_dump(); data.update({"tracking_context":context,"source":source,"status":status})
     row=StudentLocation(
         student_user_id=user.id,
         tenant_id=user.tenant_id,
         campus_id=user.campus_id,
-        **payload.model_dump(),
+        **data,
     )
     db.add(row)
-    audit(db,user,"LOCATION_UPDATE","student_location",payload.tracking_context)
+    audit(db,user,"LOCATION_UPDATE","student_location",context)
     db.commit(); db.refresh(row)
     return {
         "id":row.id,"recorded_at":row.recorded_at,"status":row.status,

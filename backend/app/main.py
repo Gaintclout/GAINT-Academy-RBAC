@@ -1367,6 +1367,7 @@ def list_academic_work(work_type:Optional[str]=None,user:User=Depends(require_ro
     st=select(AcademicWork).where(AcademicWork.tenant_id==user.tenant_id,AcademicWork.unit_id.in_(unit_ids))
     if user.role=="Teacher": st=st.where(AcademicWork.teacher_user_id==user.id)
     if work_type: st=st.where(AcademicWork.work_type==work_type.upper())
+    if user.role=="Student": st=st.where(AcademicWork.status=="PUBLISHED")
     rows=db.scalars(st.order_by(AcademicWork.id.desc())).all()
     result=[]
     for w in rows:
@@ -1407,12 +1408,16 @@ def update_academic_work(work_id:int,payload:AcademicWorkUpdateIn,user:User=Depe
 @app.post("/api/v1/academic-work/{work_id}/submit")
 def submit_work(work_id:int,payload:SubmissionIn,user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
     w=db.get(AcademicWork,work_id)
-    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
+    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user) or w.status!="PUBLISHED": raise HTTPException(404,"Academic work not found")
+    if w.work_type not in {"HOMEWORK","ASSIGNMENT"}: raise HTTPException(400,"This work type does not accept student submissions")
+    now=dt.datetime.utcnow()
+    if w.due_at and now>w.due_at: raise HTTPException(409,"Submission deadline has passed")
     sub=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work_id,StudentAcademicWork.student_user_id==user.id))
+    if sub and sub.status=="GRADED": raise HTTPException(409,"Graded work cannot be resubmitted")
     if not sub:
         sub=StudentAcademicWork(tenant_id=user.tenant_id,work_id=work_id,student_user_id=user.id)
         db.add(sub)
-    sub.submission_text=payload.submission_text; sub.submitted_at=dt.datetime.utcnow(); sub.status="SUBMITTED"
+    sub.submission_text=payload.submission_text.strip(); sub.submitted_at=now; sub.status="SUBMITTED"
     audit(db,user,"SUBMIT",w.work_type,w.title); db.commit(); db.refresh(sub)
     return {"id":sub.id,"status":sub.status,"submitted_at":sub.submitted_at}
 

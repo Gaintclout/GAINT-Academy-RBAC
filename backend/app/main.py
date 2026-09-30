@@ -2126,6 +2126,20 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/timetable")
+def admin_timetable(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id).order_by(ClassSession.starts_at.desc())).all()
+    now=dt.datetime.utcnow()
+    rows=[]
+    for x in sessions:
+        unit=db.get(AcademicUnit,x.unit_id); teacher=db.get(User,x.teacher_user_id)
+        rows.append({"id":x.id,"title":x.title,"unit_id":x.unit_id,"unit_name":unit.name if unit else f"Unit #{x.unit_id}","unit_type":unit.unit_type if unit else "","teacher_id":x.teacher_user_id,"teacher_name":teacher.name if teacher else f"Teacher #{x.teacher_user_id}","starts_at":x.starts_at,"ends_at":x.ends_at,"room":x.room,"status":x.status})
+    future=[x for x in sessions if x.ends_at>=now]
+    rooms=len({x.room for x in future if x.room})
+    teachers=len({x.teacher_user_id for x in future})
+    units=len({x.unit_id for x in future})
+    return {"summary":{"total":len(sessions),"upcoming":len(future),"teachers":teachers,"academic_units":units,"rooms":rooms},"sessions":rows}
+
 @app.get("/api/v1/admin/academics-overview")
 def admin_academics_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id).order_by(AcademicUnit.unit_type,AcademicUnit.name)).all()

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2306,14 +2306,16 @@ def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Instit
     return {"id":row.id,"name":row.name,"status":row.status}
 
 @app.patch("/api/v1/admin/hostels/{hostel_id}")
-def admin_hostel_update(hostel_id:int,payload:HostelIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+def admin_hostel_update(hostel_id:int,payload:HostelUpdateIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     row=db.scalar(select(Hostel).where(Hostel.id==hostel_id,Hostel.tenant_id==user.tenant_id))
     if not row: raise HTTPException(404,"Hostel not found")
-    if payload.campus_id!=row.campus_id: raise HTTPException(400,"Hostel campus cannot be changed")
     duplicate=db.scalar(select(Hostel.id).where(Hostel.tenant_id==user.tenant_id,Hostel.campus_id==row.campus_id,Hostel.code==payload.code.strip(),Hostel.id!=row.id))
     if duplicate: raise HTTPException(409,"Hostel code already exists for this campus")
-    row.name=payload.name.strip(); row.code=payload.code.strip(); row.hostel_type=payload.hostel_type.strip().upper(); row.warden_name=payload.warden_name.strip(); row.warden_phone=payload.warden_phone.strip()
-    audit(db,user,"UPDATE","Hostel",f"{row.id}:{row.name}"); db.commit()
+    status=payload.status.strip().upper()
+    if status not in {"ACTIVE","INACTIVE"}: raise HTTPException(400,"Invalid hostel status")
+    if status=="INACTIVE" and db.scalar(select(HostelAllocation.id).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.hostel_id==row.id,HostelAllocation.status=="ACTIVE")): raise HTTPException(409,"Hostel with active student allocations cannot be made inactive")
+    row.name=payload.name.strip(); row.code=payload.code.strip(); row.hostel_type=payload.hostel_type.strip().upper(); row.warden_name=payload.warden_name.strip(); row.warden_phone=payload.warden_phone.strip(); row.status=status
+    audit(db,user,"UPDATE","Hostel",f"{row.id}:{row.name}:{status}"); db.commit()
     return {"id":row.id,"name":row.name,"status":row.status}
 
 @app.post("/api/v1/admin/hostel-rooms")
@@ -2325,6 +2327,19 @@ def admin_hostel_room_create(payload:HostelRoomIn,user:User=Depends(require_role
     row=HostelRoom(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_number=payload.room_number.strip(),floor=payload.floor.strip(),capacity=payload.capacity,room_type=payload.room_type.strip().upper())
     db.add(row); audit(db,user,"CREATE","Hostel Room",f"{hostel.name}:{row.room_number}"); db.commit(); db.refresh(row)
     return {"id":row.id,"room_number":row.room_number,"status":row.status}
+
+@app.patch("/api/v1/admin/hostel-rooms/{room_id}")
+def admin_hostel_room_update(room_id:int,payload:HostelRoomUpdateIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(HostelRoom).where(HostelRoom.id==room_id,HostelRoom.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Hostel room not found")
+    active=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.room_id==row.id,HostelAllocation.status=="ACTIVE")).all()
+    if payload.capacity<len(active): raise HTTPException(409,"Room capacity cannot be lower than current occupancy")
+    status=payload.status.strip().upper()
+    if status not in {"AVAILABLE","INACTIVE","MAINTENANCE"}: raise HTTPException(400,"Invalid room status")
+    if active and status!="AVAILABLE": raise HTTPException(409,"Occupied room must remain available until students check out")
+    row.floor=payload.floor.strip(); row.capacity=payload.capacity; row.room_type=payload.room_type.strip().upper(); row.status=status
+    audit(db,user,"UPDATE","Hostel Room",f"{row.id}:{row.room_number}:{status}"); db.commit()
+    return {"id":row.id,"status":row.status,"capacity":row.capacity}
 
 @app.post("/api/v1/admin/hostel-allocations")
 def admin_hostel_allocate(payload:HostelAllocationIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

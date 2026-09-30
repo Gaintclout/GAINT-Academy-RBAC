@@ -398,3 +398,20 @@ class AdminTransportVehicleIn(BaseModel):
 
 class AdminTransportStatusUpdate(BaseModel):
     status: str = Field(min_length=1, max_length=30)
+
+
+class AdminClassSessionIn(BaseModel):
+    unit_id: int
+    teacher_user_id: int
+    title: str = Field(min_length=2, max_length=180)
+    starts_at: str
+    ends_at: str
+    room: str = Field(default="", max_length=120)
+
+class AdminClassSessionUpdate(BaseModel):
+    teacher_user_id: int
+    title: str = Field(min_length=2, max_length=180)
+    starts_at: str
+    ends_at: str
+    room: str = Field(default="", max_length=120)
+    status: str = Field(default="Scheduled", max_length=30)

@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2125,6 +2125,39 @@ def create_sos(
     audit(db,user,"SOS_CREATE","sos",payload.message)
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
+
+@app.get("/api/v1/admin/health")
+def admin_health(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    records=db.scalars(select(HealthRecord).where(HealthRecord.tenant_id==user.tenant_id).order_by(HealthRecord.updated_at.desc())).all()
+    visits=db.scalars(select(HealthVisit).where(HealthVisit.tenant_id==user.tenant_id).order_by(HealthVisit.visited_at.desc()).limit(500)).all()
+    ids={x.person_user_id for x in records}|{x.person_user_id for x in visits}
+    people=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(ids))).all() if ids else []
+    names={x.id:x for x in people}
+    return {"summary":{"health_profiles":len(records),"visits":len(visits),"emergency_contacts":sum(bool(x.emergency_contact_phone) for x in records),"referred":sum(x.disposition=="REFERRED" for x in visits),"sent_home":sum(x.disposition=="SENT_HOME" for x in visits)},"people":[{"id":x.id,"name":x.name,"email":x.email,"role":x.role,"campus_id":x.campus_id} for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role.in_(["Student","Teacher"]))).all()],"records":[{"id":x.id,"person_user_id":x.person_user_id,"person_name":names[x.person_user_id].name if x.person_user_id in names else f"User #{x.person_user_id}","person_role":names[x.person_user_id].role if x.person_user_id in names else "Unknown","campus_id":x.campus_id,"blood_group":x.blood_group,"allergies":x.allergies,"medical_conditions":x.medical_conditions,"emergency_contact_name":x.emergency_contact_name,"emergency_contact_phone":x.emergency_contact_phone,"notes":x.notes,"updated_at":x.updated_at} for x in records],"visits":[{"id":x.id,"person_user_id":x.person_user_id,"person_name":names[x.person_user_id].name if x.person_user_id in names else f"User #{x.person_user_id}","person_role":names[x.person_user_id].role if x.person_user_id in names else "Unknown","campus_id":x.campus_id,"visit_type":x.visit_type,"complaint":x.complaint,"action_taken":x.action_taken,"disposition":x.disposition,"visited_at":x.visited_at} for x in visits]}
+
+@app.post("/api/v1/admin/health/records")
+def admin_health_record(payload:HealthRecordIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    person=db.scalar(select(User).where(User.id==payload.person_user_id,User.tenant_id==user.tenant_id,User.role.in_(["Student","Teacher"])))
+    if not person: raise HTTPException(404,"Student or teacher not found")
+    row=db.scalar(select(HealthRecord).where(HealthRecord.tenant_id==user.tenant_id,HealthRecord.person_user_id==person.id))
+    values=payload.model_dump(exclude={"person_user_id"})
+    if row:
+        for k,v in values.items(): setattr(row,k,v.strip() if isinstance(v,str) else v)
+        row.updated_at=dt.datetime.utcnow(); action="UPDATE"
+    else:
+        row=HealthRecord(tenant_id=user.tenant_id,campus_id=person.campus_id,person_user_id=person.id,recorded_by=user.id,**values); db.add(row); action="CREATE"
+    audit(db,user,f"HEALTH_{action}",f"health_record:{person.id}",person.name); db.commit(); db.refresh(row)
+    return {"id":row.id}
+
+@app.post("/api/v1/admin/health/visits")
+def admin_health_visit(payload:HealthVisitIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    person=db.scalar(select(User).where(User.id==payload.person_user_id,User.tenant_id==user.tenant_id,User.role.in_(["Student","Teacher"])))
+    if not person: raise HTTPException(404,"Student or teacher not found")
+    disposition=payload.disposition.strip().upper()
+    if disposition not in {"RETURNED","SENT_HOME","REFERRED"}: raise HTTPException(400,"Invalid health visit disposition")
+    row=HealthVisit(tenant_id=user.tenant_id,campus_id=person.campus_id,person_user_id=person.id,visit_type=payload.visit_type.strip().upper(),complaint=payload.complaint.strip(),action_taken=payload.action_taken.strip(),disposition=disposition,recorded_by=user.id)
+    db.add(row); audit(db,user,"HEALTH_VISIT","health_visit",f"{person.name};{disposition}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"disposition":row.disposition}
 
 @app.get("/api/v1/admin/visitors")
 def admin_visitors(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

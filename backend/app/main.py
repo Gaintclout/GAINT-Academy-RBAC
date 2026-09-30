@@ -2182,6 +2182,8 @@ def admin_visitors(user:User=Depends(require_roles("Institution Admin")),db:Sess
 @app.post("/api/v1/admin/visitors")
 def admin_visitor_checkin(payload:CampusVisitorIn,campus_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     if campus_id<1: raise HTTPException(400,"Invalid campus")
+    campus_exists=db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==campus_id).limit(1))
+    if not campus_exists: raise HTTPException(404,"Campus not found in this institution")
     row=CampusVisitor(tenant_id=user.tenant_id,campus_id=campus_id,recorded_by=user.id,**payload.model_dump())
     db.add(row); audit(db,user,"VISITOR_CHECK_IN","institution_visitor",f"{payload.name};campus={campus_id}"); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
@@ -2233,6 +2235,10 @@ def admin_hostels(user:User=Depends(require_roles("Institution Admin")),db:Sessi
 
 @app.post("/api/v1/admin/hostels")
 def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    campus_exists=db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==payload.campus_id).limit(1))
+    if not campus_exists: raise HTTPException(404,"Campus not found in this institution")
+    duplicate=db.scalar(select(Hostel.id).where(Hostel.tenant_id==user.tenant_id,Hostel.campus_id==payload.campus_id,Hostel.code==payload.code.strip()))
+    if duplicate: raise HTTPException(409,"Hostel code already exists for this campus")
     row=Hostel(tenant_id=user.tenant_id,campus_id=payload.campus_id,name=payload.name.strip(),code=payload.code.strip(),hostel_type=payload.hostel_type.strip().upper(),warden_name=payload.warden_name.strip(),warden_phone=payload.warden_phone.strip())
     db.add(row); audit(db,user,"CREATE","Hostel",row.name); db.commit(); db.refresh(row)
     return {"id":row.id,"name":row.name,"status":row.status}
@@ -2241,6 +2247,8 @@ def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Instit
 def admin_hostel_room_create(payload:HostelRoomIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     hostel=db.scalar(select(Hostel).where(Hostel.id==payload.hostel_id,Hostel.tenant_id==user.tenant_id))
     if not hostel: raise HTTPException(404,"Hostel not found")
+    duplicate=db.scalar(select(HostelRoom.id).where(HostelRoom.tenant_id==user.tenant_id,HostelRoom.hostel_id==hostel.id,HostelRoom.room_number==payload.room_number.strip()))
+    if duplicate: raise HTTPException(409,"Room number already exists in this hostel")
     row=HostelRoom(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_number=payload.room_number.strip(),floor=payload.floor.strip(),capacity=payload.capacity,room_type=payload.room_type.strip().upper())
     db.add(row); audit(db,user,"CREATE","Hostel Room",f"{hostel.name}:{row.room_number}"); db.commit(); db.refresh(row)
     return {"id":row.id,"room_number":row.room_number,"status":row.status}
@@ -2252,6 +2260,9 @@ def admin_hostel_allocate(payload:HostelAllocationIn,user:User=Depends(require_r
     student=db.scalar(select(User).where(User.id==payload.student_user_id,User.tenant_id==user.tenant_id,User.role=="Student"))
     if not hostel or not room: raise HTTPException(404,"Hostel room not found")
     if not student: raise HTTPException(404,"Student not found")
+    if hostel.status!="ACTIVE": raise HTTPException(409,"Hostel is not active")
+    if room.status!="AVAILABLE": raise HTTPException(409,"Room is not available")
+    if student.campus_id!=hostel.campus_id: raise HTTPException(409,"Student and hostel must belong to the same campus")
     existing=db.scalar(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.student_user_id==student.id,HostelAllocation.status=="ACTIVE"))
     if existing: raise HTTPException(409,"Student already has an active hostel allocation")
     occupied=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.room_id==room.id,HostelAllocation.status=="ACTIVE")).all()

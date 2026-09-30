@@ -2436,7 +2436,62 @@ def admin_exams_results(user:User=Depends(require_roles("Institution Admin")),db
         rows.append({"id":exam.id,"title":exam.title,"unit_name":unit.name if unit else f"Unit #{exam.unit_id}","teacher_name":teacher.name if teacher else f"Teacher #{exam.teacher_user_id}","max_marks":exam.max_marks,"due_at":exam.due_at,"results":len(saved),"passed":passed,"failed":failed,"published":published,"average_percentage":avg,"status":"PUBLISHED" if saved and published==len(saved) else "DRAFT" if saved else "AWAITING RESULTS"})
     published_results=sum(bool(r.published) for r in results)
     pass_count=sum(r.result_status=="PASS" for r in results)
-    return {"summary":{"exams":len(exams),"results":len(results),"published":published_results,"draft":len(results)-published_results,"pass_rate":round(pass_count*100/len(results),1) if results else None},"exams":rows}
+    units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.unit_type.in_({"COURSE","SECTION_BATCH"}),AcademicUnit.status=="Active").order_by(AcademicUnit.name)).all()
+    teachers=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Teacher",User.is_active==True).order_by(User.name)).all()
+    return {"summary":{"exams":len(exams),"results":len(results),"published":published_results,"draft":len(results)-published_results,"pass_rate":round(pass_count*100/len(results),1) if results else None},"exams":rows,"units":[{"id":x.id,"name":x.name,"code":x.code,"campus_id":x.campus_id} for x in units],"teachers":[{"id":x.id,"name":x.name,"campus_id":x.campus_id} for x in teachers]}
+
+@app.post("/api/v1/admin/exams")
+def admin_exam_create(payload:AcademicWorkIn,teacher_user_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    unit=db.scalar(select(AcademicUnit).where(AcademicUnit.id==payload.unit_id,AcademicUnit.tenant_id==user.tenant_id))
+    teacher=db.scalar(select(User).where(User.id==teacher_user_id,User.tenant_id==user.tenant_id,User.role=="Teacher",User.is_active==True))
+    if not unit or unit.unit_type not in {"COURSE","SECTION_BATCH"}: raise HTTPException(400,"Invalid exam course or section")
+    if not teacher: raise HTTPException(400,"Invalid active teacher")
+    if unit.campus_id!=teacher.campus_id: raise HTTPException(409,"Teacher and exam unit must belong to the same campus")
+    if payload.max_marks<=0: raise HTTPException(400,"Exam maximum marks must be greater than zero")
+    due=_parse_due_at(payload.due_at)
+    row=AcademicWork(tenant_id=user.tenant_id,unit_id=unit.id,teacher_user_id=teacher.id,work_type="EXAM",title=payload.title.strip(),description=payload.description.strip(),max_marks=payload.max_marks,due_at=due)
+    db.add(row); audit(db,user,"CREATE","EXAM",f"{row.title};teacher={teacher.id}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.get("/api/v1/admin/exams/{work_id}/results")
+def admin_exam_results(work_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    exam=db.scalar(select(AcademicWork).where(AcademicWork.id==work_id,AcademicWork.tenant_id==user.tenant_id,AcademicWork.work_type=="EXAM"))
+    if not exam: raise HTTPException(404,"Exam not found")
+    students=sorted(_students_for_unit(db,user.tenant_id,exam.unit_id)); saved={r.student_user_id:r for r in db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()}
+    rows=[]
+    for sid in students:
+        st=db.scalar(select(User).where(User.id==sid,User.tenant_id==user.tenant_id,User.role=="Student")); r=saved.get(sid)
+        if st: rows.append({"student_id":sid,"student_name":st.name,"marks":r.marks if r else None,"percentage":r.percentage if r else None,"grade":r.grade if r else "","result_status":r.result_status if r else "","remarks":r.remarks if r else "","published":bool(r.published) if r else False})
+    return {"exam":{"id":exam.id,"title":exam.title,"max_marks":exam.max_marks},"students":rows}
+
+@app.put("/api/v1/admin/exams/{work_id}/results")
+def admin_exam_result_save(work_id:int,payload:ExamResultIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    exam=db.scalar(select(AcademicWork).where(AcademicWork.id==work_id,AcademicWork.tenant_id==user.tenant_id,AcademicWork.work_type=="EXAM"))
+    if not exam: raise HTTPException(404,"Exam not found")
+    if payload.student_user_id not in _students_for_unit(db,user.tenant_id,exam.unit_id): raise HTTPException(400,"Student is not enrolled in this exam course")
+    if payload.marks>exam.max_marks: raise HTTPException(400,"Marks cannot exceed maximum marks")
+    percentage=round(payload.marks*100/exam.max_marks,2); rule=_grade_for(db,user.tenant_id,percentage)
+    if not rule: raise HTTPException(409,"No grading rule covers this percentage")
+    row=db.scalar(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id,ExamResult.student_user_id==payload.student_user_id))
+    if row and row.published: raise HTTPException(409,"Published results are locked")
+    if not row: row=ExamResult(tenant_id=user.tenant_id,work_id=work_id,student_user_id=payload.student_user_id,marks=payload.marks,percentage=percentage,grade=rule.grade,grade_point=rule.grade_point,result_status=rule.result_status,remarks=payload.remarks); db.add(row)
+    else: row.marks=payload.marks; row.percentage=percentage; row.grade=rule.grade; row.grade_point=rule.grade_point; row.result_status=rule.result_status; row.remarks=payload.remarks
+    audit(db,user,"GRADE_ADMIN","exam_result",f"exam={work_id};student={payload.student_user_id};grade={rule.grade}"); db.commit()
+    return {"ok":True,"grade":rule.grade,"percentage":percentage}
+
+@app.post("/api/v1/admin/exams/{work_id}/approve")
+def admin_exam_approve(work_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    exam=db.scalar(select(AcademicWork).where(AcademicWork.id==work_id,AcademicWork.tenant_id==user.tenant_id,AcademicWork.work_type=="EXAM"))
+    if not exam: raise HTTPException(404,"Exam not found")
+    gaps=_grading_scheme_gaps(db,user.tenant_id)
+    if gaps: raise HTTPException(409,"Complete the grading scheme before approving results")
+    student_ids=_students_for_unit(db,user.tenant_id,exam.unit_id)
+    rows=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()
+    if not student_ids: raise HTTPException(409,"No enrolled students for this exam")
+    if student_ids-{r.student_user_id for r in rows}: raise HTTPException(409,"Enter results for all enrolled students before approval")
+    for r in rows: r.published=True
+    audit(db,user,"APPROVE","exam_results",f"exam={work_id};count={len(rows)}"); db.commit()
+    return {"ok":True,"published":len(rows)}
 
 @app.get("/api/v1/admin/attendance-overview")
 def admin_attendance_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

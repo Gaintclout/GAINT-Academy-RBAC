@@ -495,6 +495,38 @@ def test_hr_attendance_and_performance_validate_staff_scope():
     }).status_code==422
 
 
+def test_hr_rejects_inactive_staff_and_duplicate_active_candidate():
+    hr=_login("hr@gaintacademy.com")
+    staff=client.get("/api/v1/hr/staff",headers=hr).json()
+    teacher=next(x for x in staff if x["role"]=="Teacher")
+    with SessionLocal() as db:
+        target=db.get(User,teacher["id"])
+        target.is_active=False
+        db.commit()
+    assert client.post("/api/v1/hr/attendance",headers=hr,json={
+        "staff_user_id":teacher["id"],"attendance_date":"2026-09-30","status":"PRESENT","note":""
+    }).status_code==400
+    assert client.post("/api/v1/hr/documents",headers=hr,json={
+        "staff_user_id":teacher["id"],"document_type":"ID Proof","title":"Identity"
+    }).status_code==400
+    assert client.post("/api/v1/hr/performance",headers=hr,json={
+        "staff_user_id":teacher["id"],"review_period":"Q3 2026","rating":4
+    }).status_code==400
+    candidate={"name":"Test Candidate","email":"candidate-unique@example.com","position":"Teacher"}
+    assert client.post("/api/v1/hr/recruitment",headers=hr,json=candidate).status_code==200
+    assert client.post("/api/v1/hr/recruitment",headers=hr,json=candidate).status_code==409
+
+
+def test_hr_mutations_reject_non_hr_roles():
+    student=_login("student@gaintacademy.com")
+    assert client.post("/api/v1/hr/recruitment",headers=student,json={
+        "name":"Blocked","email":"blocked@example.com","position":"Teacher"
+    }).status_code==403
+    assert client.patch("/api/v1/hr/leave/999999",headers=student,json={
+        "status":"APPROVED","reviewer_note":""
+    }).status_code==403
+
+
 def test_campus_admin_endpoints_are_role_protected():
     campus=_login("campus@gaintacademy.com")
     student=_login("student@gaintacademy.com")

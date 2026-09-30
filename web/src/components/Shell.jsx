@@ -59,7 +59,6 @@ import AcademicWorkStudent from "./AcademicWorkStudent";
 import TeacherSessions from "./TeacherSessions";
 import StudentAttendanceTimetable from "./StudentAttendanceTimetable";
 import GradeRules from "./GradeRules";
-import StudentResults from "./StudentResults";
 import TeacherResults from "./TeacherResults";
 import TeacherNotes from "./TeacherNotes";
 import TeacherCommunication from "./TeacherCommunication";

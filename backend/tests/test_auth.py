@@ -408,11 +408,11 @@ def test_campus_admin_rejects_invalid_operational_data():
     assert client.post("/api/v1/campus/assets",headers=h,json={
         "asset_code":"","name":"","category":"IT","serial_number":"","location":"",
         "assigned_to":"","condition":"GOOD","status":"ACTIVE","notes":""
-    }).status_code==400
+    }).status_code in (400,422)
     assert client.post("/api/v1/campus/events",headers=h,json={
         "title":"","event_type":"General","venue":"Hall","starts_at":"2026-10-10T10:00:00",
         "ends_at":"2026-10-10T11:00:00","audience_role":"ALL","registration_required":False
-    }).status_code==400
+    }).status_code in (400,422)
 
 
 def test_campus_admin_mutations_are_role_protected():

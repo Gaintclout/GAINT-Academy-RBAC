@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2386,6 +2386,33 @@ def admin_library_book_update(book_id:int,payload:AdminLibraryBookUpdate,user:Us
     row.title=payload.title.strip(); row.author=payload.author.strip(); row.category=payload.category.strip(); row.isbn=payload.isbn.strip() if payload.isbn else None; row.status=status
     audit(db,user,"UPDATE","Library Book",f"{row.accession_no}:{status}"); db.commit()
     return {"id":row.id,"status":row.status}
+
+@app.post("/api/v1/admin/library/loans")
+def admin_library_issue(payload:AdminLibraryLoanIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    book=db.scalar(select(LibraryBook).where(LibraryBook.id==payload.book_id,LibraryBook.tenant_id==user.tenant_id))
+    if not book: raise HTTPException(404,"Library book not found")
+    if book.status!="Available": raise HTTPException(409,"Only available books can be issued")
+    borrower=db.scalar(select(User).where(User.id==payload.borrower_user_id,User.tenant_id==user.tenant_id,User.is_active==True))
+    if not borrower: raise HTTPException(404,"Active borrower not found in this institution")
+    if borrower.campus_id!=book.campus_id: raise HTTPException(409,"Borrower and book must belong to the same campus")
+    due=_parse_due_at(payload.due_at)
+    if not due or due<=dt.datetime.utcnow(): raise HTTPException(400,"Due date must be in the future")
+    active=db.scalar(select(LibraryLoan.id).where(LibraryLoan.tenant_id==user.tenant_id,LibraryLoan.book_id==book.id,LibraryLoan.returned_at.is_(None)))
+    if active: raise HTTPException(409,"Book already has an active loan")
+    row=LibraryLoan(tenant_id=user.tenant_id,campus_id=book.campus_id,book_id=book.id,borrower_user_id=borrower.id,due_at=due,status="Issued")
+    book.status="Issued"; db.add(row); audit(db,user,"ISSUE","Library Loan",f"book={book.id};borrower={borrower.id}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status,"due_at":row.due_at}
+
+@app.patch("/api/v1/admin/library/loans/{loan_id}/return")
+def admin_library_return(loan_id:int,payload:AdminLibraryReturnIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(LibraryLoan).where(LibraryLoan.id==loan_id,LibraryLoan.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Library loan not found")
+    if row.returned_at is not None: raise HTTPException(409,"Book has already been returned")
+    book=db.scalar(select(LibraryBook).where(LibraryBook.id==row.book_id,LibraryBook.tenant_id==user.tenant_id))
+    if not book: raise HTTPException(409,"Loan book record is unavailable")
+    row.returned_at=dt.datetime.utcnow(); row.fine_amount=payload.fine_amount; row.status="Returned"; book.status="Available"
+    audit(db,user,"RETURN","Library Loan",f"loan={row.id};book={book.id};fine={payload.fine_amount}"); db.commit()
+    return {"id":row.id,"status":row.status,"returned_at":row.returned_at}
 
 @app.get("/api/v1/admin/transport")
 def admin_transport(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

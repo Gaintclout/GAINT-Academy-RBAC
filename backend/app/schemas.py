@@ -396,6 +396,16 @@ class AdminTransportVehicleIn(BaseModel):
     vehicle_number: str = Field(min_length=1, max_length=60)
     label: str = Field(default="", max_length=120)
 
+class AdminTransportRouteUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    code: str = Field(min_length=1, max_length=50)
+    status: str = Field(min_length=1, max_length=30)
+
+class AdminTransportVehicleUpdate(BaseModel):
+    vehicle_number: str = Field(min_length=1, max_length=60)
+    label: str = Field(default="", max_length=120)
+    status: str = Field(min_length=1, max_length=30)
+
 class AdminTransportStatusUpdate(BaseModel):
     status: str = Field(min_length=1, max_length=30)
 

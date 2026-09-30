@@ -425,7 +425,9 @@ def create_student_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     if overlap: raise HTTPException(409,"A pending or approved leave request already overlaps these dates")
     leave_type=payload.leave_type.strip().title()
     if leave_type not in {"Casual","Sick","Emergency","Other"}: raise HTTPException(400,"Invalid leave type")
-    row=StudentLeaveRequest(tenant_id=user.tenant_id,student_user_id=user.id,requested_by_user_id=user.id,leave_type=leave_type,start_date=start,end_date=end,reason=payload.reason.strip(),status="PENDING")
+    reason=payload.reason.strip()
+    if len(reason)<2: raise HTTPException(400,"Leave reason is required")
+    row=StudentLeaveRequest(tenant_id=user.tenant_id,student_user_id=user.id,requested_by_user_id=user.id,leave_type=leave_type,start_date=start,end_date=end,reason=reason,status="PENDING")
     db.add(row); audit(db,user,"CREATE","Student Leave",leave_type); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
 

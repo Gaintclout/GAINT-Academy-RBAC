@@ -2126,6 +2126,31 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/inventory-assets")
+def admin_inventory_assets(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    inventory=db.scalars(select(CampusInventoryItem).where(CampusInventoryItem.tenant_id==user.tenant_id).order_by(CampusInventoryItem.name)).all()
+    assets=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id).order_by(CampusAsset.name)).all()
+    return {"summary":{"inventory_items":len(inventory),"total_quantity":sum(x.quantity for x in inventory),"low_stock":sum(x.quantity<=x.minimum_quantity for x in inventory),"assets":len(assets),"active_assets":sum(x.status=="ACTIVE" for x in assets),"attention_assets":sum(x.condition in {"DAMAGED","REPAIR"} for x in assets)},"inventory":[{"id":x.id,"campus_id":x.campus_id,"name":x.name,"category":x.category,"item_code":x.item_code,"quantity":x.quantity,"minimum_quantity":x.minimum_quantity,"location":x.location,"status":x.status,"notes":x.notes,"low_stock":x.quantity<=x.minimum_quantity} for x in inventory],"assets":[{"id":x.id,"campus_id":x.campus_id,"asset_code":x.asset_code,"name":x.name,"category":x.category,"serial_number":x.serial_number,"location":x.location,"assigned_to":x.assigned_to,"condition":x.condition,"status":x.status,"notes":x.notes} for x in assets]}
+
+@app.patch("/api/v1/admin/inventory/{item_id}")
+def admin_inventory_update(item_id:int,payload:CampusInventoryUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusInventoryItem).where(CampusInventoryItem.id==item_id,CampusInventoryItem.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Inventory item not found")
+    if payload.status not in {"ACTIVE","INACTIVE"}: raise HTTPException(400,"Invalid inventory status")
+    row.quantity=payload.quantity; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
+    audit(db,user,"INVENTORY_UPDATE",f"inventory:{row.id}",f"quantity={row.quantity};status={row.status}"); db.commit()
+    return {"id":row.id,"quantity":row.quantity,"status":row.status}
+
+@app.patch("/api/v1/admin/assets/{asset_id}")
+def admin_asset_update(asset_id:int,payload:CampusAssetUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusAsset).where(CampusAsset.id==asset_id,CampusAsset.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Asset not found")
+    if payload.condition not in {"GOOD","FAIR","DAMAGED","REPAIR"}: raise HTTPException(400,"Invalid asset condition")
+    if payload.status not in {"ACTIVE","INACTIVE","RETIRED"}: raise HTTPException(400,"Invalid asset status")
+    row.location=payload.location; row.assigned_to=payload.assigned_to; row.condition=payload.condition; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
+    audit(db,user,"ASSET_UPDATE",f"asset:{row.id}",f"condition={row.condition};status={row.status}"); db.commit()
+    return {"id":row.id,"condition":row.condition,"status":row.status}
+
 @app.get("/api/v1/admin/hostels")
 def admin_hostels(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     hostels=db.scalars(select(Hostel).where(Hostel.tenant_id==user.tenant_id).order_by(Hostel.name)).all()

@@ -384,3 +384,17 @@ class AdminLibraryBookUpdate(BaseModel):
     category: str = Field(default="", max_length=100)
     isbn: str | None = Field(default=None, max_length=30)
     status: str = Field(default="Available", max_length=30)
+
+
+class AdminTransportRouteIn(BaseModel):
+    campus_id: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=120)
+    code: str = Field(min_length=1, max_length=50)
+
+class AdminTransportVehicleIn(BaseModel):
+    campus_id: int = Field(ge=1)
+    vehicle_number: str = Field(min_length=1, max_length=60)
+    label: str = Field(default="", max_length=120)
+
+class AdminTransportStatusUpdate(BaseModel):
+    status: str = Field(min_length=1, max_length=30)

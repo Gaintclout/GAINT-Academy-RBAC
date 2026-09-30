@@ -428,6 +428,19 @@ def create_student_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     db.add(row); audit(db,user,"CREATE","Student Leave",leave_type); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
 
+@app.post("/api/v1/student/events/{event_id}/register")
+def register_student_event(event_id:int,user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    event=db.scalar(select(AcademyEvent).where(AcademyEvent.id==event_id,AcademyEvent.tenant_id==user.tenant_id,AcademyEvent.status=="Published"))
+    if not event or (event.campus_id is not None and event.campus_id!=user.campus_id) or event.audience_role not in ("ALL","Student"):
+        raise HTTPException(404,"Event not available")
+    if not event.registration_required: raise HTTPException(409,"Registration is not required for this event")
+    if event.registration_deadline and event.registration_deadline<dt.datetime.utcnow(): raise HTTPException(409,"Event registration is closed")
+    existing=db.scalar(select(EventRegistration).where(EventRegistration.tenant_id==user.tenant_id,EventRegistration.event_id==event.id,EventRegistration.user_id==user.id))
+    if existing: return {"id":existing.id,"status":existing.status}
+    row=EventRegistration(tenant_id=user.tenant_id,event_id=event.id,user_id=user.id,status="Registered")
+    db.add(row); audit(db,user,"REGISTER","Events",event.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
 @app.get("/api/v1/parents/leave")
 def parent_leave_requests(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
     child_ids={x.student_user_id for x in db.scalars(select(ParentStudentLink).where(

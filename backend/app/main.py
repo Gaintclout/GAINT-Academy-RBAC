@@ -2505,7 +2505,7 @@ def admin_lms_overview(user:User=Depends(require_roles("Institution Admin")),db:
     rows=[]
     for w in works:
         counts[w.work_type]=counts.get(w.work_type,0)+1; subs=by_work.get(w.id,[])
-        rows.append({"id":w.id,"work_type":w.work_type,"title":w.title,"unit_name":units[w.unit_id].name if w.unit_id in units else f"Unit #{w.unit_id}","teacher_name":teachers[w.teacher_user_id].name if w.teacher_user_id in teachers else f"Teacher #{w.teacher_user_id}","max_marks":w.max_marks,"due_at":w.due_at,"status":w.status,"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in subs),"graded":sum(s.status=="GRADED" for s in subs)})
+        rows.append({"id":w.id,"work_type":w.work_type,"title":w.title,"description":w.description,"unit_id":w.unit_id,"unit_name":units[w.unit_id].name if w.unit_id in units else f"Unit #{w.unit_id}","teacher_user_id":w.teacher_user_id,"teacher_name":teachers[w.teacher_user_id].name if w.teacher_user_id in teachers else f"Teacher #{w.teacher_user_id}","max_marks":w.max_marks,"due_at":w.due_at,"status":w.status,"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in subs),"graded":sum(s.status=="GRADED" for s in subs)})
     available_units=[x for x in units.values() if x.unit_type in {"COURSE","SECTION_BATCH"} and x.status=="Active"]
     available_teachers=[x for x in teachers.values() if x.is_active]
     return {"summary":{"learning_items":len(works),"homework":counts.get("HOMEWORK",0),"assignments":counts.get("ASSIGNMENT",0),"exams":counts.get("EXAM",0),"submissions":sum(s.status in {"SUBMITTED","GRADED"} for s in submissions),"graded":sum(s.status=="GRADED" for s in submissions)},"items":rows,"units":[{"id":x.id,"name":x.name,"code":x.code,"campus_id":x.campus_id} for x in available_units],"teachers":[{"id":x.id,"name":x.name,"campus_id":x.campus_id} for x in available_teachers]}
@@ -2535,6 +2535,8 @@ def admin_lms_update(work_id:int,payload:AdminAcademicWorkUpdate,user:User=Depen
     _admin_lms_context(db,user,row.unit_id,payload.teacher_user_id)
     status=payload.status.strip().upper()
     if status not in {"PUBLISHED","DRAFT","CLOSED"}: raise HTTPException(400,"Invalid learning item status")
+    graded=db.scalars(select(StudentAcademicWork).where(StudentAcademicWork.tenant_id==user.tenant_id,StudentAcademicWork.work_id==row.id,StudentAcademicWork.status=="GRADED")).all()
+    if graded and any(float(x.marks or 0)>payload.max_marks for x in graded): raise HTTPException(409,"Maximum marks cannot be lower than an existing graded submission")
     row.teacher_user_id=payload.teacher_user_id; row.title=payload.title.strip(); row.description=payload.description.strip(); row.max_marks=payload.max_marks; row.due_at=_parse_due_at(payload.due_at); row.status=status
     audit(db,user,"UPDATE_ADMIN",row.work_type,f"{row.id}:{row.title}:{status}"); db.commit()
     return {"id":row.id,"status":row.status}

@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 from app.main import app
+from app.database import SessionLocal
+from app.models import User
 
 client = TestClient(app)
 

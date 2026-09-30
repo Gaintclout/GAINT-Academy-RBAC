@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2204,6 +2204,15 @@ def admin_inventory_assets(user:User=Depends(require_roles("Institution Admin"))
     assets=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id).order_by(CampusAsset.name)).all()
     return {"summary":{"inventory_items":len(inventory),"total_quantity":sum(x.quantity for x in inventory),"low_stock":sum(x.quantity<=x.minimum_quantity for x in inventory),"assets":len(assets),"active_assets":sum(x.status=="ACTIVE" for x in assets),"attention_assets":sum(x.condition in {"DAMAGED","REPAIR"} for x in assets)},"inventory":[{"id":x.id,"campus_id":x.campus_id,"name":x.name,"category":x.category,"item_code":x.item_code,"quantity":x.quantity,"minimum_quantity":x.minimum_quantity,"location":x.location,"status":x.status,"notes":x.notes,"low_stock":x.quantity<=x.minimum_quantity} for x in inventory],"assets":[{"id":x.id,"campus_id":x.campus_id,"asset_code":x.asset_code,"name":x.name,"category":x.category,"serial_number":x.serial_number,"location":x.location,"assigned_to":x.assigned_to,"condition":x.condition,"status":x.status,"notes":x.notes} for x in assets]}
 
+@app.post("/api/v1/admin/inventory")
+def admin_inventory_create(payload:AdminInventoryIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    if not db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==payload.campus_id).limit(1)): raise HTTPException(404,"Campus not found in this institution")
+    if payload.status not in {"ACTIVE","INACTIVE"}: raise HTTPException(400,"Invalid inventory status")
+    data=payload.model_dump(); campus_id=data.pop("campus_id")
+    row=CampusInventoryItem(tenant_id=user.tenant_id,campus_id=campus_id,recorded_by=user.id,**data)
+    db.add(row); audit(db,user,"INVENTORY_CREATE_ADMIN","campus_inventory",payload.name); db.commit(); db.refresh(row)
+    return {"id":row.id}
+
 @app.patch("/api/v1/admin/inventory/{item_id}")
 def admin_inventory_update(item_id:int,payload:CampusInventoryUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     row=db.scalar(select(CampusInventoryItem).where(CampusInventoryItem.id==item_id,CampusInventoryItem.tenant_id==user.tenant_id))
@@ -2212,6 +2221,17 @@ def admin_inventory_update(item_id:int,payload:CampusInventoryUpdate,user:User=D
     row.quantity=payload.quantity; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
     audit(db,user,"INVENTORY_UPDATE",f"inventory:{row.id}",f"quantity={row.quantity};status={row.status}"); db.commit()
     return {"id":row.id,"quantity":row.quantity,"status":row.status}
+
+@app.post("/api/v1/admin/assets")
+def admin_asset_create(payload:AdminAssetIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    if not db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==payload.campus_id).limit(1)): raise HTTPException(404,"Campus not found in this institution")
+    if payload.condition not in {"GOOD","FAIR","DAMAGED","REPAIR"}: raise HTTPException(400,"Invalid asset condition")
+    if payload.status not in {"ACTIVE","INACTIVE","RETIRED"}: raise HTTPException(400,"Invalid asset status")
+    if db.scalar(select(CampusAsset.id).where(CampusAsset.tenant_id==user.tenant_id,CampusAsset.campus_id==payload.campus_id,CampusAsset.asset_code==payload.asset_code)): raise HTTPException(409,"Asset code already exists in this campus")
+    data=payload.model_dump(); campus_id=data.pop("campus_id")
+    row=CampusAsset(tenant_id=user.tenant_id,campus_id=campus_id,recorded_by=user.id,**data)
+    db.add(row); audit(db,user,"ASSET_CREATE_ADMIN","campus_asset",payload.asset_code); db.commit(); db.refresh(row)
+    return {"id":row.id}
 
 @app.patch("/api/v1/admin/assets/{asset_id}")
 def admin_asset_update(asset_id:int,payload:CampusAssetUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
@@ -2222,6 +2242,18 @@ def admin_asset_update(asset_id:int,payload:CampusAssetUpdate,user:User=Depends(
     row.location=payload.location; row.assigned_to=payload.assigned_to; row.condition=payload.condition; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
     audit(db,user,"ASSET_UPDATE",f"asset:{row.id}",f"condition={row.condition};status={row.status}"); db.commit()
     return {"id":row.id,"condition":row.condition,"status":row.status}
+
+@app.delete("/api/v1/admin/inventory/{item_id}")
+def admin_inventory_delete(item_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusInventoryItem).where(CampusInventoryItem.id==item_id,CampusInventoryItem.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Inventory item not found")
+    audit(db,user,"INVENTORY_DELETE_ADMIN","campus_inventory",f"{row.id}:{row.name}"); db.delete(row); db.commit(); return {"ok":True}
+
+@app.delete("/api/v1/admin/assets/{asset_id}")
+def admin_asset_delete(asset_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusAsset).where(CampusAsset.id==asset_id,CampusAsset.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Asset not found")
+    audit(db,user,"ASSET_DELETE_ADMIN","campus_asset",f"{row.id}:{row.asset_code}"); db.delete(row); db.commit(); return {"ok":True}
 
 @app.get("/api/v1/admin/hostels")
 def admin_hostels(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

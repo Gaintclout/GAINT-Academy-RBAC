@@ -970,7 +970,8 @@ def hr_performance(user:User=Depends(require_roles("HR","Institution Admin","Aud
 @app.post("/api/v1/hr/performance")
 def create_hr_performance(payload:StaffPerformanceReviewIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
     target=db.get(User,payload.staff_user_id)
-    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"}: raise HTTPException(400,"Invalid staff member")
+    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"} or not target.is_active: raise HTTPException(400,"Invalid or inactive staff member")
+    if not payload.review_period.strip(): raise HTTPException(400,"Review period is required")
     status=payload.status.strip().upper()
     if status not in {"DRAFT","COMPLETED"}: raise HTTPException(400,"Invalid review status")
     row=StaffPerformanceReview(tenant_id=user.tenant_id,staff_user_id=target.id,review_period=payload.review_period.strip(),rating=payload.rating,strengths=payload.strengths.strip(),improvement_areas=payload.improvement_areas.strip(),goals=payload.goals.strip(),status=status,reviewed_by=user.id)
@@ -989,6 +990,8 @@ def create_hr_candidate(payload:RecruitmentCandidateIn,user:User=Depends(require
     stages={"APPLIED","SCREENING","INTERVIEW","OFFERED","HIRED","REJECTED","WITHDRAWN"}
     stage=payload.stage.strip().upper()
     if stage not in stages: raise HTTPException(400,"Invalid recruitment stage")
+    if not payload.name.strip() or not payload.position.strip(): raise HTTPException(400,"Candidate name and position are required")
+    if db.scalar(select(RecruitmentCandidate).where(RecruitmentCandidate.tenant_id==user.tenant_id,RecruitmentCandidate.email==email,RecruitmentCandidate.stage.notin_(["REJECTED","WITHDRAWN"]))): raise HTTPException(409,"An active candidate with this email already exists")
     row=RecruitmentCandidate(tenant_id=user.tenant_id,name=payload.name.strip(),email=email,phone=payload.phone.strip(),position=payload.position.strip(),stage=stage,source=payload.source.strip(),notes=payload.notes.strip(),recorded_by=user.id)
     db.add(row);audit(db,user,"CREATE","recruitment",f"candidate={email};position={row.position}");db.commit();db.refresh(row)
     return {"id":row.id,"name":row.name,"email":row.email,"position":row.position,"stage":row.stage}
@@ -1013,7 +1016,8 @@ def hr_documents(user:User=Depends(require_roles("HR","Institution Admin","Audit
 @app.post("/api/v1/hr/documents")
 def create_hr_document(payload:StaffDocumentIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
     target=db.get(User,payload.staff_user_id)
-    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"}: raise HTTPException(400,"Invalid staff member")
+    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"} or not target.is_active: raise HTTPException(400,"Invalid or inactive staff member")
+    if not payload.document_type.strip() or not payload.title.strip(): raise HTTPException(400,"Document type and title are required")
     expiry=None
     if payload.expiry_date:
         try: expiry=dt.datetime.fromisoformat(payload.expiry_date)
@@ -1033,7 +1037,7 @@ def hr_attendance(user:User=Depends(require_roles("HR","Institution Admin","Audi
 @app.post("/api/v1/hr/attendance")
 def mark_hr_attendance(payload:StaffAttendanceIn,user:User=Depends(require_roles("HR","Institution Admin")),db:Session=Depends(get_db)):
     target=db.get(User,payload.staff_user_id)
-    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"}: raise HTTPException(400,"Invalid staff member")
+    if not target or target.tenant_id!=user.tenant_id or target.role not in {"Teacher","Accounts","HR","Campus Admin","Auditor"} or not target.is_active: raise HTTPException(400,"Invalid or inactive staff member")
     try: day=dt.datetime.fromisoformat(payload.attendance_date).replace(hour=0,minute=0,second=0,microsecond=0)
     except ValueError: raise HTTPException(400,"Invalid attendance date")
     status=payload.status.strip().upper()

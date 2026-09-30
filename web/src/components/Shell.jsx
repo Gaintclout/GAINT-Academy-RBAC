@@ -75,6 +75,7 @@ import AdminReports from "./AdminReports";
 import AdminAcademics from "./AdminAcademics";
 import AdminTimetable from "./AdminTimetable";
 import AdminAttendance from "./AdminAttendance";
+import AdminExamsResults from "./AdminExamsResults";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -134,6 +135,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <CampusStudents ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Dashboard") {
     content = <CampusDashboard ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Exams & Results") {
+    content = <AdminExamsResults ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Attendance") {
     content = <AdminAttendance ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Timetable") {

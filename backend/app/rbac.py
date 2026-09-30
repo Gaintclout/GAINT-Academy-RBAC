@@ -14,7 +14,7 @@ ROLE_MENUS = {
     "Student": [
         "Dashboard", "My Profile", "Timetable", "Attendance", "Courses",
         "Homework", "Assignments", "Exams", "Results", "Fees", "Transport",
-        "Library", "Events", "Grievance", "My Safety",
+        "Library", "Events", "Grievance", "Leave Request", "My Safety",
     ],
     "Parent / Guardian": [
         "Dashboard", "My Children", "Attendance", "Homework", "Results", "Fees",
@@ -92,6 +92,7 @@ PAGE_POLICY = {
         "Library": {"view"},
         "Events": {"view"},
         "Grievance": {"view", "create_grievance"},
+        "Leave Request": {"view", "request_leave"},
         "My Safety": {"view"},
     },
     "Parent / Guardian": {

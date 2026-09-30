@@ -1318,6 +1318,7 @@ def list_academic_work(work_type:Optional[str]=None,user:User=Depends(require_ro
     unit_ids=_assigned_unit_ids(db,user)
     if not unit_ids: return []
     st=select(AcademicWork).where(AcademicWork.tenant_id==user.tenant_id,AcademicWork.unit_id.in_(unit_ids))
+    if user.role=="Teacher": st=st.where(AcademicWork.teacher_user_id==user.id)
     if work_type: st=st.where(AcademicWork.work_type==work_type.upper())
     rows=db.scalars(st.order_by(AcademicWork.id.desc())).all()
     result=[]
@@ -1356,7 +1357,7 @@ def submit_work(work_id:int,payload:SubmissionIn,user:User=Depends(require_roles
 @app.get("/api/v1/academic-work/{work_id}/submissions")
 def work_submissions(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     w=db.get(AcademicWork,work_id)
-    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
+    if not w or w.tenant_id!=user.tenant_id or w.teacher_user_id!=user.id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
     students=_students_for_unit(db,user.tenant_id,w.unit_id)
     result=[]
     for sid in students:
@@ -1367,7 +1368,7 @@ def work_submissions(work_id:int,user:User=Depends(require_roles("Teacher")),db:
 @app.put("/api/v1/academic-work/{work_id}/students/{student_id}/grade")
 def grade_work(work_id:int,student_id:int,payload:GradeIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     w=db.get(AcademicWork,work_id)
-    if not w or w.tenant_id!=user.tenant_id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
+    if not w or w.tenant_id!=user.tenant_id or w.teacher_user_id!=user.id or w.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Academic work not found")
     if student_id not in _students_for_unit(db,user.tenant_id,w.unit_id): raise HTTPException(400,"Student is not enrolled in this course or section")
     if w.max_marks and payload.marks>w.max_marks: raise HTTPException(400,"Marks cannot exceed maximum marks")
     sub=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work_id,StudentAcademicWork.student_user_id==student_id))

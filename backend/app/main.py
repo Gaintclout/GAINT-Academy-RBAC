@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2467,7 +2467,44 @@ def admin_timetable(user:User=Depends(require_roles("Institution Admin")),db:Ses
     rooms=len({x.room for x in future if x.room})
     teachers=len({x.teacher_user_id for x in future})
     units=len({x.unit_id for x in future})
-    return {"summary":{"total":len(sessions),"upcoming":len(future),"teachers":teachers,"academic_units":units,"rooms":rooms},"sessions":rows}
+    available_units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.unit_type.in_({"COURSE","SECTION_BATCH"}),AcademicUnit.status=="Active").order_by(AcademicUnit.name)).all()
+    available_teachers=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Teacher",User.is_active==True).order_by(User.name)).all()
+    return {"summary":{"total":len(sessions),"upcoming":len(future),"teachers":teachers,"academic_units":units,"rooms":rooms},"sessions":rows,"units":[{"id":x.id,"name":x.name,"code":x.code,"unit_type":x.unit_type,"campus_id":x.campus_id} for x in available_units],"teachers":[{"id":x.id,"name":x.name,"email":x.email,"campus_id":x.campus_id} for x in available_teachers]}
+
+def _validate_admin_session(db,user,unit_id,teacher_id,start,end,room,exclude_id=None):
+    unit=db.scalar(select(AcademicUnit).where(AcademicUnit.id==unit_id,AcademicUnit.tenant_id==user.tenant_id))
+    teacher=db.scalar(select(User).where(User.id==teacher_id,User.tenant_id==user.tenant_id,User.role=="Teacher",User.is_active==True))
+    if not unit or unit.unit_type not in {"COURSE","SECTION_BATCH"}: raise HTTPException(400,"Invalid course or section")
+    if not teacher: raise HTTPException(400,"Invalid active teacher")
+    if unit.campus_id!=teacher.campus_id: raise HTTPException(409,"Teacher and academic unit must belong to the same campus")
+    overlap=select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.starts_at<end,ClassSession.ends_at>start)
+    if exclude_id is not None: overlap=overlap.where(ClassSession.id!=exclude_id)
+    if db.scalar(overlap.where(ClassSession.teacher_user_id==teacher.id)): raise HTTPException(409,"Teacher already has an overlapping class session")
+    if db.scalar(overlap.where(ClassSession.unit_id==unit.id)): raise HTTPException(409,"Academic unit already has an overlapping class session")
+    if room and db.scalar(overlap.where(ClassSession.room==room)): raise HTTPException(409,"Room is already booked for this time")
+    return unit,teacher
+
+@app.post("/api/v1/admin/timetable")
+def admin_timetable_create(payload:AdminClassSessionIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    start=_parse_due_at(payload.starts_at); end=_parse_due_at(payload.ends_at)
+    if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
+    room=payload.room.strip(); _validate_admin_session(db,user,payload.unit_id,payload.teacher_user_id,start,end,room)
+    row=ClassSession(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=payload.teacher_user_id,title=payload.title.strip(),starts_at=start,ends_at=end,room=room)
+    db.add(row); audit(db,user,"CREATE","class_session",f"{row.title};teacher={payload.teacher_user_id}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.put("/api/v1/admin/timetable/{session_id}")
+def admin_timetable_update(session_id:int,payload:AdminClassSessionUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(ClassSession).where(ClassSession.id==session_id,ClassSession.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Class session not found")
+    start=_parse_due_at(payload.starts_at); end=_parse_due_at(payload.ends_at)
+    if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
+    status=payload.status.strip().title()
+    if status not in {"Scheduled","Completed","Cancelled"}: raise HTTPException(400,"Invalid session status")
+    room=payload.room.strip(); _validate_admin_session(db,user,row.unit_id,payload.teacher_user_id,start,end,room,row.id)
+    row.teacher_user_id=payload.teacher_user_id; row.title=payload.title.strip(); row.starts_at=start; row.ends_at=end; row.room=room; row.status=status
+    audit(db,user,"UPDATE","class_session",f"{row.id};{status}"); db.commit()
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/admin/academics-overview")
 def admin_academics_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

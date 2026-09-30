@@ -1846,6 +1846,7 @@ def create_finance_concession(payload:FeeConcessionIn,user:User=Depends(require_
     if not ledger or ledger.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
     if ledger.status=="CANCELLED": raise HTTPException(409,"Cancelled fees cannot receive concessions")
     amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
+    if amount<=0: raise HTTPException(400,"Concession amount must be greater than zero")
     balance=max(Decimal("0.00"),ledger.amount_due-ledger.amount_paid)
     if amount>balance: raise HTTPException(400,"Concession cannot exceed outstanding balance")
     row=FeeConcession(tenant_id=user.tenant_id,ledger_id=ledger.id,student_user_id=ledger.student_user_id,
@@ -1876,6 +1877,7 @@ def create_finance_refund(payload:FeeRefundIn,user:User=Depends(require_roles("A
     if not ledger or ledger.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
     refunded=db.scalar(select(func.coalesce(func.sum(FeeRefund.amount),0)).where(FeeRefund.tenant_id==user.tenant_id,FeeRefund.payment_id==payment.id))
     amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
+    if amount<=0: raise HTTPException(400,"Refund amount must be greater than zero")
     available=Decimal(str(payment.amount))-Decimal(str(refunded or 0))
     if amount>available: raise HTTPException(400,"Refund cannot exceed the unrefunded payment amount")
     if amount>ledger.amount_paid: raise HTTPException(400,"Refund cannot exceed the ledger paid amount")
@@ -1960,9 +1962,11 @@ def cancel_fee_ledger(ledger_id:int,user:User=Depends(require_roles("Accounts","
 def finance_report(start_date:str|None=None,end_date:str|None=None,user:User=Depends(require_roles("Accounts","Institution Admin","Auditor")),db:Session=Depends(get_db)):
     st=select(FeePayment).where(FeePayment.tenant_id==user.tenant_id)
     try:
-        if start_date: st=st.where(FeePayment.paid_at>=dt.datetime.fromisoformat(start_date))
-        if end_date:
-            end=dt.datetime.fromisoformat(end_date)
+        start=dt.datetime.fromisoformat(start_date) if start_date else None
+        end=dt.datetime.fromisoformat(end_date) if end_date else None
+        if start and end and start>end: raise HTTPException(400,"Report start date cannot be after end date")
+        if start: st=st.where(FeePayment.paid_at>=start)
+        if end:
             if len(end_date)<=10: end=end+dt.timedelta(days=1)
             st=st.where(FeePayment.paid_at<end)
     except ValueError: raise HTTPException(400,"Invalid report date")
@@ -1989,6 +1993,8 @@ def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(requ
     reference=payload.reference.strip()
     if reference and db.scalar(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id,FeePayment.reference==reference)): raise HTTPException(409,"This payment reference has already been recorded")
     payment_amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
+    if payment_amount<=0: raise HTTPException(400,"Payment amount must be greater than zero")
+    if balance<=0: raise HTTPException(409,"This fee has no outstanding balance")
     if payment_amount>balance: raise HTTPException(400,"Payment cannot exceed outstanding balance")
     receipt=f"GAINT-{user.tenant_id}-{dt.datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{ledger_id}"
     payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payment_amount,reference=reference,receipt_no=receipt,recorded_by=user.id)

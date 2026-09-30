@@ -429,6 +429,13 @@ def test_parent_leave_rejects_unlinked_student_and_invalid_dates():
     assert response.status_code==403
 
 
+def test_parent_child_detail_endpoints_reject_unlinked_student():
+    parent=_login("parent@gaintacademy.com")
+    for suffix in ("fees","academics","transport","location"):
+        response=client.get(f"/api/v1/parents/children/999999/{suffix}",headers=parent)
+        assert response.status_code==403, f"{suffix}: {response.text}"
+
+
 def test_parent_message_rejects_invalid_teacher_context():
     parent=_login("parent@gaintacademy.com")
     children=client.get("/api/v1/parents/children",headers=parent).json()

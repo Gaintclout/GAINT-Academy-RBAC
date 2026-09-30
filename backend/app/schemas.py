@@ -405,6 +405,21 @@ class AdminTransportVehicleIn(BaseModel):
     vehicle_number: str = Field(min_length=1, max_length=60)
     label: str = Field(default="", max_length=120)
 
+class AdminTransportStopIn(BaseModel):
+    route_id: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=120)
+    stop_order: int = Field(default=0, ge=0)
+
+class AdminTransportAllocationIn(BaseModel):
+    student_user_id: int = Field(ge=1)
+    route_id: int = Field(ge=1)
+    vehicle_id: int | None = Field(default=None, ge=1)
+    stop_id: int = Field(ge=1)
+    pickup_time: str = Field(default="", max_length=10)
+    drop_time: str = Field(default="", max_length=10)
+    status: str = Field(default="Active", max_length=30)
+
+
 class AdminTransportRouteUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     code: str = Field(min_length=1, max_length=50)

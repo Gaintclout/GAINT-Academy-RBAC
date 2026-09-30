@@ -86,6 +86,13 @@ class ClassSessionIn(BaseModel):
     ends_at: str
     room: str = ""
 
+class ClassSessionUpdateIn(BaseModel):
+    title: str = Field(min_length=2, max_length=180)
+    starts_at: str
+    ends_at: str
+    room: str = ""
+    status: str = Field(default="Scheduled", max_length=30)
+
 class AttendanceMarkIn(BaseModel):
     student_user_id: int
     status: str

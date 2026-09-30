@@ -2089,7 +2089,7 @@ def parent_child_academics(student_id:int,user:User=Depends(require_roles("Paren
     homework=[]
     for work in works:
         if student.id not in _students_for_unit(db,user.tenant_id,work.unit_id): continue
-        if work.work_type not in {"HOMEWORK","ASSIGNMENT"}: continue
+        if work.work_type not in {"HOMEWORK","ASSIGNMENT"} or work.status!="PUBLISHED": continue
         submission=db.scalar(select(StudentAcademicWork).where(StudentAcademicWork.work_id==work.id,StudentAcademicWork.student_user_id==student.id))
         homework.append({"id":work.id,"work_type":work.work_type,"title":work.title,"due_at":work.due_at,"status":submission.status if submission else "NOT_SUBMITTED","score":submission.score if submission else None})
 
@@ -2099,7 +2099,7 @@ def parent_child_academics(student_id:int,user:User=Depends(require_roles("Paren
     ).order_by(ClassSession.starts_at.desc())).all() if visible_units else []
     attendance=[]; attended=0; counted=0; excused=0
     for session in sessions:
-        if student.id not in _students_for_unit(db,user.tenant_id,session.unit_id): continue
+        if student.id not in _students_for_unit(db,user.tenant_id,session.unit_id) or session.status=="CANCELLED": continue
         entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==student.id))
         status=entry.status if entry else "UNMARKED"
         if status=="EXCUSED": excused+=1
@@ -2116,7 +2116,7 @@ def parent_child_academics(student_id:int,user:User=Depends(require_roles("Paren
     result_rows=[]
     for result in results:
         exam=db.get(AcademicWork,result.work_id)
-        if exam: result_rows.append({"exam_id":exam.id,"title":exam.title,"marks":result.marks,"percentage":result.percentage,"grade":result.grade,"grade_point":result.grade_point,"result_status":result.result_status})
+        if exam and exam.tenant_id==user.tenant_id and exam.work_type=="EXAM": result_rows.append({"exam_id":exam.id,"title":exam.title,"marks":result.marks,"percentage":result.percentage,"grade":result.grade,"grade_point":result.grade_point,"result_status":result.result_status})
 
     audit(db,user,"ACADEMIC_VIEW",f"student:{student.id}","parent_link_verified"); db.commit()
     return {"student":{"id":student.id,"name":student.name,"email":student.email},"attendance":{"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"counted_sessions":counted,"excused":excused,"sessions":attendance},"homework":homework,"results":result_rows}

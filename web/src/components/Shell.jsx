@@ -72,6 +72,7 @@ import StudentEnrollment from "./StudentEnrollment";
 import AdminStudents from "./AdminStudents";
 import StaffManagement from "./StaffManagement";
 import AdminReports from "./AdminReports";
+import AdminAcademics from "./AdminAcademics";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -131,6 +132,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <CampusStudents ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Dashboard") {
     content = <CampusDashboard ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Academics") {
+    content = <AdminAcademics ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Reports") {
     content = <AdminReports ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Students") {

@@ -2294,6 +2294,17 @@ def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Instit
     db.add(row); audit(db,user,"CREATE","Hostel",row.name); db.commit(); db.refresh(row)
     return {"id":row.id,"name":row.name,"status":row.status}
 
+@app.patch("/api/v1/admin/hostels/{hostel_id}")
+def admin_hostel_update(hostel_id:int,payload:HostelIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(Hostel).where(Hostel.id==hostel_id,Hostel.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Hostel not found")
+    if payload.campus_id!=row.campus_id: raise HTTPException(400,"Hostel campus cannot be changed")
+    duplicate=db.scalar(select(Hostel.id).where(Hostel.tenant_id==user.tenant_id,Hostel.campus_id==row.campus_id,Hostel.code==payload.code.strip(),Hostel.id!=row.id))
+    if duplicate: raise HTTPException(409,"Hostel code already exists for this campus")
+    row.name=payload.name.strip(); row.code=payload.code.strip(); row.hostel_type=payload.hostel_type.strip().upper(); row.warden_name=payload.warden_name.strip(); row.warden_phone=payload.warden_phone.strip()
+    audit(db,user,"UPDATE","Hostel",f"{row.id}:{row.name}"); db.commit()
+    return {"id":row.id,"name":row.name,"status":row.status}
+
 @app.post("/api/v1/admin/hostel-rooms")
 def admin_hostel_room_create(payload:HostelRoomIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     hostel=db.scalar(select(Hostel).where(Hostel.id==payload.hostel_id,Hostel.tenant_id==user.tenant_id))

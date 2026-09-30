@@ -1467,6 +1467,7 @@ def class_sessions(user:User=Depends(require_roles("Student","Teacher")),db:Sess
     if not unit_ids: return []
     st=select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(unit_ids))
     if user.role=="Teacher": st=st.where(ClassSession.teacher_user_id==user.id)
+    if user.role=="Student": st=st.where(ClassSession.status!="CANCELLED")
     rows=db.scalars(st.order_by(ClassSession.starts_at.desc())).all()
     result=[]
     for x in rows:

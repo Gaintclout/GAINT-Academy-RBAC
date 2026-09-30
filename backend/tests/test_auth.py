@@ -405,7 +405,7 @@ def test_campus_admin_rejects_invalid_operational_data():
         "name":"Invalid Stock","category":"Test","item_code":"NEG-STOCK","quantity":-1,
         "minimum_quantity":0,"location":"Store","status":"ACTIVE","notes":""
     }).status_code in (400,422)
-    assert client.post("/api/v1/campus/assets",headers=h,json:{
+    assert client.post("/api/v1/campus/assets",headers=h,json={
         "asset_code":"","name":"","category":"IT","serial_number":"","location":"",
         "assigned_to":"","condition":"GOOD","status":"ACTIVE","notes":""
     }).status_code==400

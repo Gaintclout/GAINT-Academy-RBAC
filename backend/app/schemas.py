@@ -268,6 +268,11 @@ class TeacherNoteIn(BaseModel):
     visibility: str = "PRIVATE"
 
 
+class TeacherNoteUpdateIn(BaseModel):
+    subject: str = Field(min_length=2, max_length=180)
+    note: str = Field(min_length=1)
+    visibility: str = "PRIVATE"
+
 class TeacherMessageIn(BaseModel):
     recipient_user_id: int
     student_user_id: Optional[int] = None

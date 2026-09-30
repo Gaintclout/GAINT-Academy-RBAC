@@ -2562,6 +2562,7 @@ def admin_exam_result_save(work_id:int,payload:ExamResultIn,user:User=Depends(re
     exam=db.scalar(select(AcademicWork).where(AcademicWork.id==work_id,AcademicWork.tenant_id==user.tenant_id,AcademicWork.work_type=="EXAM"))
     if not exam: raise HTTPException(404,"Exam not found")
     if payload.student_user_id not in _students_for_unit(db,user.tenant_id,exam.unit_id): raise HTTPException(400,"Student is not enrolled in this exam course")
+    if exam.max_marks<=0: raise HTTPException(409,"Exam maximum marks must be greater than zero before results can be entered")
     if payload.marks>exam.max_marks: raise HTTPException(400,"Marks cannot exceed maximum marks")
     percentage=round(payload.marks*100/exam.max_marks,2); rule=_grade_for(db,user.tenant_id,percentage)
     if not rule: raise HTTPException(409,"No grading rule covers this percentage")
@@ -2582,9 +2583,11 @@ def admin_exam_approve(work_id:int,user:User=Depends(require_roles("Institution 
     rows=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()
     if not student_ids: raise HTTPException(409,"No enrolled students for this exam")
     if student_ids-{r.student_user_id for r in rows}: raise HTTPException(409,"Enter results for all enrolled students before approval")
-    for r in rows: r.published=True
-    audit(db,user,"APPROVE","exam_results",f"exam={work_id};count={len(rows)}"); db.commit()
-    return {"ok":True,"published":len(rows)}
+    active_rows=[r for r in rows if r.student_user_id in student_ids]
+    if active_rows and all(r.published for r in active_rows): return {"ok":True,"published":len(active_rows),"already_published":True}
+    for r in active_rows: r.published=True
+    audit(db,user,"APPROVE","exam_results",f"exam={work_id};count={len(active_rows)}"); db.commit()
+    return {"ok":True,"published":len(active_rows)}
 
 @app.get("/api/v1/admin/attendance-overview")
 def admin_attendance_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

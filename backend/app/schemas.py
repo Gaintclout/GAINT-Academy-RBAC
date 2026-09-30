@@ -70,6 +70,13 @@ class AcademicWorkIn(BaseModel):
     max_marks: float = Field(default=0, ge=0)
     due_at: Optional[str] = None
 
+class AcademicWorkUpdateIn(BaseModel):
+    title: str = Field(min_length=2, max_length=180)
+    description: str = ""
+    max_marks: float = Field(default=0, ge=0)
+    due_at: Optional[str] = None
+    status: str = Field(default="PUBLISHED", max_length=30)
+
 class SubmissionIn(BaseModel):
     submission_text: str = Field(min_length=1)
 

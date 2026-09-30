@@ -8,3 +8,9 @@ dist/
 .expo/
 coverage/
 .pytest_cache/
+
+# Production secrets
+.env.production
+backend/.env.production
+web/.env.production
+mobile/.env.production

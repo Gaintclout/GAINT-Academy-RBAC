@@ -1568,7 +1568,7 @@ def my_attendance(user:User=Depends(require_roles("Student")),db:Session=Depends
             unit=parent
     if not visible_units:
         return {"percentage":None,"attended":0,"absent":0,"late":0,"excused":0,"marked_sessions":0,"counted_sessions":0,"sessions":[]}
-    sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(visible_units)).order_by(ClassSession.starts_at.desc())).all()
+    sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.unit_id.in_(visible_units),ClassSession.status!="CANCELLED").order_by(ClassSession.starts_at.desc())).all()
     rows=[]; attended=0; absent=0; late=0; excused=0; marked=0; counted=0
     for session in sessions:
         if user.id not in _students_for_unit(db,user.tenant_id,session.unit_id): continue
@@ -1583,7 +1583,8 @@ def my_attendance(user:User=Depends(require_roles("Student")),db:Session=Depends
                 if status=="PRESENT": attended+=1
                 elif status=="LATE": attended+=1; late+=1
                 elif status=="ABSENT": absent+=1
-        rows.append({"session_id":session.id,"title":session.title,"starts_at":session.starts_at,"room":session.room,"status":status})
+        unit=db.get(AcademicUnit,session.unit_id); teacher=db.get(User,session.teacher_user_id)
+        rows.append({"session_id":session.id,"unit_name":unit.name if unit and unit.tenant_id==user.tenant_id else None,"unit_code":unit.code if unit and unit.tenant_id==user.tenant_id else None,"teacher":teacher.name if teacher and teacher.tenant_id==user.tenant_id else None,"title":session.title,"starts_at":session.starts_at,"room":session.room,"status":status})
     return {"percentage":round(attended*100/counted,1) if counted else None,"attended":attended,"absent":absent,"late":late,"excused":excused,"marked_sessions":marked,"counted_sessions":counted,"sessions":rows}
 
 @app.get("/api/v1/grade-rules")
@@ -1678,7 +1679,7 @@ def my_results(user:User=Depends(require_roles("Student")),db:Session=Depends(ge
     result=[]; points=[]
     for r in rows:
         exam=db.get(AcademicWork,r.work_id); unit=db.get(AcademicUnit,exam.unit_id) if exam else None
-        if exam and unit:
+        if exam and unit and exam.tenant_id==user.tenant_id and unit.tenant_id==user.tenant_id and exam.work_type=="EXAM":
             result.append({"exam_id":exam.id,"exam":exam.title,"course":unit.name,"marks":r.marks,"max_marks":exam.max_marks,"percentage":r.percentage,"grade":r.grade,"grade_point":r.grade_point,"result_status":r.result_status,"remarks":r.remarks})
             if r.grade_point is not None: points.append(r.grade_point)
     average=round(sum(points)/len(points),2) if points else None

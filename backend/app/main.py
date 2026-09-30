@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, AcademicWorkUpdateIn, SubmissionIn, GradeIn, ClassSessionIn, ClassSessionUpdateIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeeLedgerUpdateIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, AcademicWorkUpdateIn, SubmissionIn, GradeIn, ClassSessionIn, ClassSessionUpdateIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeeLedgerUpdateIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherNoteUpdateIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -1314,6 +1314,19 @@ def create_teacher_note(payload:TeacherNoteIn,user:User=Depends(require_roles("T
                     unit_id=payload.unit_id,subject=payload.subject.strip(),note=payload.note.strip(),visibility=visibility)
     db.add(row); audit(db,user,"CREATE","Teacher Notes",payload.subject.strip()); db.commit(); db.refresh(row)
     return {"id":row.id,"subject":row.subject,"visibility":row.visibility,"created_at":row.created_at}
+
+@app.put("/api/v1/teacher/notes/{note_id}")
+def update_teacher_note(note_id:int,payload:TeacherNoteUpdateIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    row=db.scalar(select(TeacherNote).where(TeacherNote.id==note_id,TeacherNote.tenant_id==user.tenant_id,TeacherNote.teacher_user_id==user.id))
+    if not row: raise HTTPException(404,"Teacher note not found")
+    classes=_assigned_unit_ids(db,user)
+    if row.unit_id not in classes or row.student_user_id not in _students_for_unit(db,user.tenant_id,row.unit_id):
+        raise HTTPException(403,"Student is no longer in this assigned class")
+    visibility=payload.visibility.strip().upper()
+    if visibility not in {"PRIVATE","STUDENT","GUARDIAN"}: raise HTTPException(400,"Invalid note visibility")
+    row.subject=payload.subject.strip(); row.note=payload.note.strip(); row.visibility=visibility
+    audit(db,user,"UPDATE","Teacher Notes",f"{row.id}:{row.subject}"); db.commit()
+    return {"id":row.id,"visibility":row.visibility}
 
 @app.get("/api/v1/academic-work")
 def list_academic_work(work_type:Optional[str]=None,user:User=Depends(require_roles("Student","Teacher")),db:Session=Depends(get_db)):

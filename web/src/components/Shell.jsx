@@ -82,6 +82,7 @@ import AdminLMS from "./AdminLMS";
 import AdminEvents from "./AdminEvents";
 import AdminGrievance from "./AdminGrievance";
 import AdminTransport from "./AdminTransport";
+import AdminLibrary from "./AdminLibrary";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -141,6 +142,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <CampusStudents ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Dashboard") {
     content = <CampusDashboard ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Library") {
+    content = <AdminLibrary ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Transport") {
     content = <AdminTransport ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Grievance") {

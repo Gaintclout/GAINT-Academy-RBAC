@@ -34,7 +34,7 @@ const MODULES = {
 };
 
 function EmptyTable({ columns, message }) {
-  return <section className="panel structure-table">
+  return <>{message&&<div className="success">{message}</div>}<section className="panel structure-table">
     <div className="table-scroll">
       <table>
         <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
@@ -170,19 +170,24 @@ function StudentLibrary() {
 
 function StudentEvents() {
   const [events, setEvents] = useState(null);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    api.get("/api/v1/student/events")
+  const loadEvents = () => api.get("/api/v1/student/events")
       .then((response) => { setEvents(response.data || []); setError(""); })
       .catch((e) => setError(e?.response?.data?.detail || "Unable to load events."));
+  useEffect(() => {
+    loadEvents(); /*
+      .then((response) => { setEvents(response.data || []); setError(""); })
+      .catch((e) => setError(e?.response?.data?.detail || "Unable to load events.")); */
   }, []);
+  async function register(id){try{await api.post("/api/v1/student/events/"+id+"/register");setMessage("Event registration completed.");loadEvents()}catch(e){setError(e?.response?.data?.detail||"Unable to register for event.")}}
 
   if (error) return <div className="error">{error}</div>;
   if (!events) return <section className="panel">Loading events...</section>;
   if (!events.length) return <EmptyTable columns={MODULES.Events.columns} message={MODULES.Events.empty} />;
 
-  return <section className="panel structure-table">
+  return <>{message&&<div className="success">{message}</div>}<section className="panel structure-table">
     <div className="panel-title"><b>Student Events</b><span>{events.length}</span></div>
     <div className="table-scroll">
       <table>
@@ -198,11 +203,11 @@ function StudentEvents() {
             <td>{event.organizer || "—"}</td>
             <td>{event.registration_status || "—"}</td>
             <td>{event.status || "—"}</td>
-          </tr>;
+          <td>{event.registration_required && event.registration_status==="Not Registered" ? <button type="button" onClick={()=>register(event.id)}>Register</button> : "—"}</td></tr>;
         })}</tbody>
       </table>
     </div>
-  </section>;
+  </section></>;
 }
 
 

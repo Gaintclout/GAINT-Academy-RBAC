@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeeLedgerUpdateIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, ClassSessionUpdateIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeeLedgerUpdateIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -1406,6 +1406,7 @@ def create_class_session(payload:ClassSessionIn,user:User=Depends(require_roles(
     if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
     overlap=select(ClassSession).where(
         ClassSession.tenant_id==user.tenant_id,
+        ClassSession.status!="CANCELLED",
         ClassSession.starts_at < end,
         ClassSession.ends_at > start,
     )
@@ -1423,6 +1424,25 @@ def create_class_session(payload:ClassSessionIn,user:User=Depends(require_roles(
     row=ClassSession(tenant_id=user.tenant_id,unit_id=payload.unit_id,teacher_user_id=user.id,title=payload.title,starts_at=start,ends_at=end,room=room)
     db.add(row); audit(db,user,"CREATE","class_session",payload.title); db.commit(); db.refresh(row)
     return {"id":row.id,"title":row.title,"status":row.status}
+
+@app.put("/api/v1/class-sessions/{session_id}")
+def update_class_session(session_id:int,payload:ClassSessionUpdateIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    row=db.scalar(select(ClassSession).where(ClassSession.id==session_id,ClassSession.tenant_id==user.tenant_id,ClassSession.teacher_user_id==user.id))
+    if not row: raise HTTPException(404,"Class session not found")
+    start=_parse_due_at(payload.starts_at); end=_parse_due_at(payload.ends_at)
+    if not start or not end or end<=start: raise HTTPException(400,"Session end time must be after start time")
+    status=payload.status.strip().upper()
+    if status not in {"SCHEDULED","COMPLETED","CANCELLED"}: raise HTTPException(400,"Invalid session status")
+    if status!="CANCELLED":
+        overlap=select(ClassSession).where(ClassSession.tenant_id==user.tenant_id,ClassSession.id!=row.id,ClassSession.status!="CANCELLED",ClassSession.starts_at<end,ClassSession.ends_at>start)
+        if db.scalar(overlap.where(ClassSession.teacher_user_id==user.id)): raise HTTPException(409,"You already have another class session at this time")
+        if db.scalar(overlap.where(ClassSession.unit_id==row.unit_id)): raise HTTPException(409,"This course or section already has another class session at this time")
+        room=(payload.room or "").strip()
+        if room and db.scalar(overlap.where(ClassSession.room==room)): raise HTTPException(409,"Room is already booked for this time")
+    else: room=(payload.room or "").strip()
+    row.title=payload.title.strip(); row.starts_at=start; row.ends_at=end; row.room=room; row.status=status
+    audit(db,user,"UPDATE","class_session",f"{row.id}:{row.title}:{status}"); db.commit()
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/class-sessions/{session_id}/attendance")
 def session_attendance(session_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
@@ -1447,7 +1467,7 @@ def mark_attendance(session_id:int,payload:AttendanceMarkIn,user:User=Depends(re
     if not entry:
         entry=AttendanceEntry(tenant_id=user.tenant_id,session_id=session_id,student_user_id=payload.student_user_id,marked_by=user.id)
         db.add(entry)
-    entry.status=status; entry.note=payload.note; entry.marked_by=user.id; entry.marked_at=dt.datetime.utcnow()
+    entry.status=status; entry.note=(payload.note or "").strip(); entry.marked_by=user.id; entry.marked_at=dt.datetime.utcnow()
     audit(db,user,"ATTENDANCE",f"session:{session_id}",f"student={payload.student_user_id}:{status}"); db.commit()
     return {"ok":True,"status":status}
 

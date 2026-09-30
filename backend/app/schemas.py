@@ -368,3 +368,19 @@ class HealthVisitIn(BaseModel):
     complaint: str = Field(min_length=1, max_length=2000)
     action_taken: str = Field(default="", max_length=2000)
     disposition: str = Field(default="RETURNED", max_length=40)
+
+
+class AdminLibraryBookIn(BaseModel):
+    campus_id: int = Field(ge=1)
+    accession_no: str = Field(min_length=1, max_length=80)
+    isbn: str | None = Field(default=None, max_length=30)
+    title: str = Field(min_length=1, max_length=200)
+    author: str = Field(default="", max_length=160)
+    category: str = Field(default="", max_length=100)
+
+class AdminLibraryBookUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    author: str = Field(default="", max_length=160)
+    category: str = Field(default="", max_length=100)
+    isbn: str | None = Field(default=None, max_length=30)
+    status: str = Field(default="Available", max_length=30)

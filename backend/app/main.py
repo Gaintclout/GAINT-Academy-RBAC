@@ -398,6 +398,8 @@ def create_teacher_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     except ValueError:
         raise HTTPException(400,"Invalid leave date")
     if end < start: raise HTTPException(400,"Leave end date cannot be before start date")
+    overlap=db.scalar(select(TeacherLeaveRequest).where(TeacherLeaveRequest.tenant_id==user.tenant_id,TeacherLeaveRequest.teacher_user_id==user.id,TeacherLeaveRequest.status.in_(["PENDING","APPROVED"]),TeacherLeaveRequest.start_date<=end,TeacherLeaveRequest.end_date>=start))
+    if overlap: raise HTTPException(409,"A pending or approved leave request already overlaps these dates")
     leave_type=payload.leave_type.strip().title()
     if leave_type not in {"Casual","Sick","Earned","Emergency","Other"}:
         raise HTTPException(400,"Invalid leave type")
@@ -1562,7 +1564,7 @@ def _grade_for(db:Session,tenant_id:int,percentage:float):
 @app.get("/api/v1/exams/{work_id}/results")
 def exam_results_register(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     exam=db.get(AcademicWork,work_id)
-    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.teacher_user_id!=user.id or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
     student_ids=sorted(_students_for_unit(db,user.tenant_id,exam.unit_id))
     saved={r.student_user_id:r for r in db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id,ExamResult.work_id==work_id)).all()}
     rows=[]
@@ -1574,7 +1576,7 @@ def exam_results_register(work_id:int,user:User=Depends(require_roles("Teacher")
 @app.put("/api/v1/exams/{work_id}/results")
 def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     exam=db.get(AcademicWork,work_id)
-    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.teacher_user_id!=user.id or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
     if payload.student_user_id not in _students_for_unit(db,user.tenant_id,exam.unit_id): raise HTTPException(400,"Student is not enrolled in this exam course")
     if exam.max_marks<=0: raise HTTPException(400,"Exam maximum marks must be greater than zero")
     if payload.marks>exam.max_marks: raise HTTPException(400,"Marks cannot exceed maximum marks")
@@ -1593,7 +1595,7 @@ def save_exam_result(work_id:int,payload:ExamResultIn,user:User=Depends(require_
 @app.post("/api/v1/exams/{work_id}/publish")
 def publish_exam_results(work_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
     exam=db.get(AcademicWork,work_id)
-    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
+    if not exam or exam.tenant_id!=user.tenant_id or exam.work_type!="EXAM" or exam.teacher_user_id!=user.id or exam.unit_id not in _assigned_unit_ids(db,user): raise HTTPException(404,"Exam not found")
     gaps=_grading_scheme_gaps(db,user.tenant_id)
     if gaps:
         formatted=", ".join(f"{a:g}-{b:g}%" for a,b in gaps)

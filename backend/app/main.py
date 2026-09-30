@@ -2126,6 +2126,23 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/attendance-overview")
+def admin_attendance_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    entries=db.scalars(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id).order_by(AttendanceEntry.marked_at.desc())).all()
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.role=="Student")).all()
+    names={x.id:x.name for x in students}
+    sessions={x.id:x for x in db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id)).all()}
+    units={x.id:x for x in db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id)).all()}
+    counts={}
+    for x in entries: counts[x.status]=counts.get(x.status,0)+1
+    counted=counts.get("PRESENT",0)+counts.get("ABSENT",0)+counts.get("LATE",0)
+    attended=counts.get("PRESENT",0)+counts.get("LATE",0)
+    rows=[]
+    for x in entries[:500]:
+        session=sessions.get(x.session_id); unit=units.get(session.unit_id) if session else None
+        rows.append({"id":x.id,"student_user_id":x.student_user_id,"student_name":names.get(x.student_user_id,f"Student #{x.student_user_id}"),"session_id":x.session_id,"session_title":session.title if session else f"Session #{x.session_id}","unit_name":unit.name if unit else "—","status":x.status,"note":x.note,"marked_at":x.marked_at})
+    return {"summary":{"records":len(entries),"present":counts.get("PRESENT",0),"absent":counts.get("ABSENT",0),"late":counts.get("LATE",0),"excused":counts.get("EXCUSED",0),"attendance_percentage":round(attended*100/counted,1) if counted else None},"entries":rows}
+
 @app.get("/api/v1/admin/timetable")
 def admin_timetable(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id).order_by(ClassSession.starts_at.desc())).all()

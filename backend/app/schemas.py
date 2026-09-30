@@ -342,6 +342,21 @@ class HostelRoomIn(BaseModel):
     capacity: int = Field(default=1, ge=1, le=100)
     room_type: str = Field(default="STANDARD", max_length=60)
 
+class HostelUpdateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    code: str = Field(min_length=1, max_length=60)
+    hostel_type: str = Field(default="GENERAL", max_length=30)
+    warden_name: str = Field(default="", max_length=120)
+    warden_phone: str = Field(default="", max_length=40)
+    status: str = Field(default="ACTIVE", max_length=30)
+
+class HostelRoomUpdateIn(BaseModel):
+    floor: str = Field(default="", max_length=40)
+    capacity: int = Field(default=1, ge=1, le=100)
+    room_type: str = Field(default="STANDARD", max_length=60)
+    status: str = Field(default="AVAILABLE", max_length=30)
+
+
 class HostelAllocationIn(BaseModel):
     hostel_id: int
     room_id: int

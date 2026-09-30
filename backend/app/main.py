@@ -2126,6 +2126,28 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/visitors")
+def admin_visitors(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(CampusVisitor).where(CampusVisitor.tenant_id==user.tenant_id).order_by(CampusVisitor.id.desc()).limit(1000)).all()
+    return {"summary":{"visitors":len(rows),"checked_in":sum(x.status=="CHECKED_IN" for x in rows),"checked_out":sum(x.status=="CHECKED_OUT" for x in rows),"campuses":len({x.campus_id for x in rows})},"visitors":[{"id":x.id,"campus_id":x.campus_id,"name":x.name,"phone":x.phone,"purpose":x.purpose,"person_to_meet":x.person_to_meet,"status":x.status,"checked_in_at":x.checked_in_at,"checked_out_at":x.checked_out_at} for x in rows]}
+
+@app.post("/api/v1/admin/visitors")
+def admin_visitor_checkin(payload:CampusVisitorIn,campus_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    if campus_id<1: raise HTTPException(400,"Invalid campus")
+    row=CampusVisitor(tenant_id=user.tenant_id,campus_id=campus_id,recorded_by=user.id,**payload.model_dump())
+    db.add(row); audit(db,user,"VISITOR_CHECK_IN","institution_visitor",f"{payload.name};campus={campus_id}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.patch("/api/v1/admin/visitors/{visitor_id}")
+def admin_visitor_checkout(visitor_id:int,payload:CampusVisitorStatusIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusVisitor).where(CampusVisitor.id==visitor_id,CampusVisitor.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Visitor not found")
+    if payload.status!="CHECKED_OUT": raise HTTPException(400,"Only CHECKED_OUT is allowed")
+    if row.status=="CHECKED_OUT": return {"id":row.id,"status":row.status}
+    row.status="CHECKED_OUT"; row.checked_out_at=dt.datetime.utcnow()
+    audit(db,user,"VISITOR_CHECK_OUT",f"institution_visitor:{row.id}",row.name); db.commit()
+    return {"id":row.id,"status":row.status}
+
 @app.get("/api/v1/admin/inventory-assets")
 def admin_inventory_assets(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     inventory=db.scalars(select(CampusInventoryItem).where(CampusInventoryItem.tenant_id==user.tenant_id).order_by(CampusInventoryItem.name)).all()

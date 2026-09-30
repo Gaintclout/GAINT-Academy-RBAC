@@ -86,6 +86,7 @@ import AdminLibrary from "./AdminLibrary";
 import AdminHostel from "./AdminHostel";
 import AdminInventoryAssets from "./AdminInventoryAssets";
 import AdminVisitors from "./AdminVisitors";
+import AdminHealth from "./AdminHealth";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -145,6 +146,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <CampusStudents ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Dashboard") {
     content = <CampusDashboard ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Health") {
+    content = <AdminHealth ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Visitors") {
     content = <AdminVisitors ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Inventory & Assets") {

@@ -776,6 +776,7 @@ def dashboard(user: User = Depends(current_user)):
 
 @app.get("/api/v1/campus/dashboard")
 def campus_dashboard(user:User=Depends(require_roles("Campus Admin","Institution Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
     students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role=="Student")).all()
     staff_roles={"Teacher","Accounts","HR","Campus Admin","Auditor"}
     staff=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role.in_(staff_roles))).all()
@@ -822,6 +823,8 @@ def campus_visitors(user:User=Depends(require_roles("Campus Admin")),db:Session=
 
 @app.post("/api/v1/campus/visitors")
 def campus_visitor_checkin(payload:CampusVisitorIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
+    if not payload.name.strip() or not payload.purpose.strip(): raise HTTPException(400,"Visitor name and purpose are required")
     row=CampusVisitor(tenant_id=user.tenant_id,campus_id=user.campus_id,recorded_by=user.id,**payload.model_dump())
     db.add(row); audit(db,user,"VISITOR_CHECK_IN","campus_visitor",payload.name); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
@@ -843,6 +846,9 @@ def campus_inventory(user:User=Depends(require_roles("Campus Admin")),db:Session
 
 @app.post("/api/v1/campus/inventory")
 def campus_inventory_create(payload:CampusInventoryIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
+    if not payload.name.strip() or not payload.item_code.strip(): raise HTTPException(400,"Inventory name and item code are required")
+    if payload.quantity<0 or payload.minimum_quantity<0: raise HTTPException(400,"Inventory quantities cannot be negative")
     if payload.status not in {"ACTIVE","INACTIVE"}: raise HTTPException(400,"Invalid inventory status")
     row=CampusInventoryItem(tenant_id=user.tenant_id,campus_id=user.campus_id,recorded_by=user.id,**payload.model_dump())
     db.add(row); audit(db,user,"INVENTORY_CREATE","campus_inventory",payload.name); db.commit(); db.refresh(row)
@@ -853,6 +859,7 @@ def campus_inventory_update(item_id:int,payload:CampusInventoryUpdate,user:User=
     row=db.scalar(select(CampusInventoryItem).where(CampusInventoryItem.id==item_id,CampusInventoryItem.tenant_id==user.tenant_id,CampusInventoryItem.campus_id==user.campus_id))
     if not row: raise HTTPException(404,"Inventory item not found")
     if payload.status not in {"ACTIVE","INACTIVE"}: raise HTTPException(400,"Invalid inventory status")
+    if payload.quantity<0: raise HTTPException(400,"Inventory quantity cannot be negative")
     row.quantity=payload.quantity; row.status=payload.status; row.notes=payload.notes; row.updated_at=dt.datetime.utcnow()
     audit(db,user,"INVENTORY_UPDATE",f"campus_inventory:{row.id}",f"quantity={row.quantity};status={row.status}"); db.commit()
     return {"id":row.id,"quantity":row.quantity,"status":row.status}
@@ -864,6 +871,8 @@ def campus_assets(user:User=Depends(require_roles("Campus Admin")),db:Session=De
 
 @app.post("/api/v1/campus/assets")
 def campus_asset_create(payload:CampusAssetIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
+    if not payload.asset_code.strip() or not payload.name.strip(): raise HTTPException(400,"Asset code and name are required")
     if payload.condition not in {"GOOD","FAIR","DAMAGED","REPAIR"}: raise HTTPException(400,"Invalid asset condition")
     if payload.status not in {"ACTIVE","INACTIVE","RETIRED"}: raise HTTPException(400,"Invalid asset status")
     duplicate=db.scalar(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id,CampusAsset.campus_id==user.campus_id,CampusAsset.asset_code==payload.asset_code))
@@ -889,6 +898,8 @@ def campus_events(user:User=Depends(require_roles("Campus Admin")),db:Session=De
 
 @app.post("/api/v1/campus/events")
 def campus_event_create(payload:CampusEventIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
+    if not payload.title.strip(): raise HTTPException(400,"Event title is required")
     try:
         starts=dt.datetime.fromisoformat(payload.starts_at); ends=dt.datetime.fromisoformat(payload.ends_at)
         deadline=dt.datetime.fromisoformat(payload.registration_deadline) if payload.registration_deadline else None

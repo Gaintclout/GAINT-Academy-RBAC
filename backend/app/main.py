@@ -2172,6 +2172,9 @@ def admin_health_record(payload:HealthRecordIn,user:User=Depends(require_roles("
     if not person: raise HTTPException(404,"Student or teacher not found")
     row=db.scalar(select(HealthRecord).where(HealthRecord.tenant_id==user.tenant_id,HealthRecord.person_user_id==person.id))
     values=payload.model_dump(exclude={"person_user_id"})
+    blood_group=(values.get("blood_group") or "").strip().upper().replace(" ","")
+    if blood_group and blood_group not in {"A+","A-","B+","B-","AB+","AB-","O+","O-"}: raise HTTPException(400,"Invalid blood group")
+    values["blood_group"]=blood_group
     if row:
         for k,v in values.items(): setattr(row,k,v.strip() if isinstance(v,str) else v)
         row.updated_at=dt.datetime.utcnow(); action="UPDATE"

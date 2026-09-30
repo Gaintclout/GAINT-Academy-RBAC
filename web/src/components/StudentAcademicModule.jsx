@@ -22,7 +22,7 @@ const MODULES = {
   Events: {
     title: "Events",
     subtitle: "Events available to your student account.",
-    columns: ["Event", "Type", "Date", "Time", "Venue", "Organizer", "Registration", "Status"],
+    columns: ["Event", "Type", "Date", "Time", "Venue", "Organizer", "Registration", "Status", "Action"],
     empty: "No events are currently available for your student account.",
   },
   Grievance: {
@@ -34,7 +34,7 @@ const MODULES = {
 };
 
 function EmptyTable({ columns, message }) {
-  return <>{message&&<div className="success">{message}</div>}<section className="panel structure-table">
+  return <section className="panel structure-table">
     <div className="table-scroll">
       <table>
         <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>

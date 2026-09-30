@@ -513,7 +513,7 @@ def parent_events(user:User=Depends(require_roles("Parent / Guardian")),db:Sessi
     result=[]
     for event in events:
         if event.audience_role not in ("ALL","Parent / Guardian","Parent"): continue
-        if event.campus_id is not None and campus_ids and event.campus_id not in campus_ids: continue
+        if event.campus_id is not None and event.campus_id not in campus_ids: continue
         organizer=db.get(User,event.organizer_user_id) if event.organizer_user_id else None
         result.append({"id":event.id,"title":event.title,"event_type":event.event_type,"venue":event.venue,
                        "starts_at":event.starts_at,"ends_at":event.ends_at,
@@ -1240,8 +1240,10 @@ def parent_messages(user:User=Depends(require_roles("Parent / Guardian")),db:Ses
         CommunicationMessage.tenant_id==user.tenant_id,
         ((CommunicationMessage.sender_user_id==user.id)|(CommunicationMessage.recipient_user_id==user.id)),
     ).order_by(CommunicationMessage.created_at.desc())).all()
+    valid_child_ids={x["id"] for x in parent_children(user,db)}
     result=[]
     for row in rows:
+        if row.student_user_id is not None and row.student_user_id not in valid_child_ids: continue
         sender=db.get(User,row.sender_user_id); recipient=db.get(User,row.recipient_user_id)
         student=db.get(User,row.student_user_id) if row.student_user_id else None
         result.append({"id":row.id,"direction":"Sent" if row.sender_user_id==user.id else "Received",
@@ -2000,7 +2002,11 @@ def fee_receipts(ledger_id:int,user:User=Depends(current_user),db:Session=Depend
     if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
     allowed=user.role in {"Accounts","Institution Admin","Auditor"} or (user.role=="Student" and row.student_user_id==user.id)
     if user.role=="Parent / Guardian":
-        allowed=db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.parent_user_id==user.id,ParentStudentLink.student_user_id==row.student_user_id,ParentStudentLink.tenant_id==user.tenant_id)) is not None
+        try:
+            _linked_child(db,user,row.student_user_id)
+            allowed=True
+        except HTTPException:
+            allowed=False
     if not allowed: raise HTTPException(403,"You cannot view these receipts")
     rows=db.scalars(select(FeePayment).where(FeePayment.ledger_id==ledger_id,FeePayment.tenant_id==user.tenant_id).order_by(FeePayment.paid_at.desc())).all()
     return [{"id":x.id,"amount":x.amount,"reference":x.reference,"receipt_no":x.receipt_no,"paid_at":x.paid_at} for x in rows]
@@ -2018,16 +2024,21 @@ def parent_dashboard(user:User=Depends(require_roles("Parent / Guardian")),db:Se
         )).all()
         balance=sum(float(max(0,x.amount_due-x.amount_paid)) for x in fee_rows)
         total_balance+=balance
-        unit_ids=_assigned_unit_ids(db,db.get(User,student_id))
+        student=_linked_child(db,user,student_id)
+        unit_ids=_assigned_unit_ids(db,student)
         sessions=db.scalars(select(ClassSession).where(
             ClassSession.tenant_id==user.tenant_id,
             ClassSession.unit_id.in_(unit_ids) if unit_ids else False,
+            ClassSession.status!="CANCELLED",
         )).all() if unit_ids else []
         marked=present=0
         for session in sessions:
+            if student.id not in _students_for_unit(db,user.tenant_id,session.unit_id): continue
             entry=db.scalar(select(AttendanceEntry).where(
-                AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==student_id))
-            if entry and entry.status!="UNMARKED":
+                AttendanceEntry.tenant_id==user.tenant_id,
+                AttendanceEntry.session_id==session.id,
+                AttendanceEntry.student_user_id==student_id))
+            if entry and entry.status not in {"UNMARKED","EXCUSED"}:
                 marked+=1
                 if entry.status in ("PRESENT","LATE"): present+=1
         result.append({**child,"fee_balance":balance,"attendance_percentage":round(present*100/marked,1) if marked else None})

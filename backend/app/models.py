@@ -547,3 +547,48 @@ class CampusAsset(Base):
     recorded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Hostel(Base):
+    __tablename__ = "hostels"
+    __table_args__ = (UniqueConstraint("tenant_id","campus_id","code", name="uq_hostel_code"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    code: Mapped[str] = mapped_column(String(60))
+    hostel_type: Mapped[str] = mapped_column(String(30), default="GENERAL")
+    warden_name: Mapped[str] = mapped_column(String(120), default="")
+    warden_phone: Mapped[str] = mapped_column(String(40), default="")
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+class HostelRoom(Base):
+    __tablename__ = "hostel_rooms"
+    __table_args__ = (UniqueConstraint("tenant_id","hostel_id","room_number", name="uq_hostel_room"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    hostel_id: Mapped[int] = mapped_column(ForeignKey("hostels.id"), index=True)
+    room_number: Mapped[str] = mapped_column(String(40))
+    floor: Mapped[str] = mapped_column(String(40), default="")
+    capacity: Mapped[int] = mapped_column(Integer, default=1)
+    room_type: Mapped[str] = mapped_column(String(60), default="STANDARD")
+    status: Mapped[str] = mapped_column(String(30), default="AVAILABLE")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+class HostelAllocation(Base):
+    __tablename__ = "hostel_allocations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, index=True)
+    campus_id: Mapped[int] = mapped_column(Integer, index=True)
+    hostel_id: Mapped[int] = mapped_column(ForeignKey("hostels.id"), index=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("hostel_rooms.id"), index=True)
+    student_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    bed_number: Mapped[str] = mapped_column(String(40), default="")
+    check_in_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    check_out_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    allocated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

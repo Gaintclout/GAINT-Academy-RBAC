@@ -434,3 +434,7 @@ class AdminAcademicWorkUpdate(BaseModel):
     max_marks: float = Field(default=0, ge=0)
     due_at: Optional[str] = None
     status: str = Field(default="PUBLISHED", max_length=30)
+
+
+class AdminEventUpdateIn(CampusEventIn):
+    status: str = Field(default="Published", max_length=30)

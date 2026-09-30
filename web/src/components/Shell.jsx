@@ -78,6 +78,7 @@ import AdminAttendance from "./AdminAttendance";
 import AdminExamsResults from "./AdminExamsResults";
 import AdminFeesPayments from "./AdminFeesPayments";
 import AdminCommunication from "./AdminCommunication";
+import AdminLMS from "./AdminLMS";
 import { displayMenuLabel, getInstitutionUI } from "../institutionUI";
 
 export default function Shell({ user, onLogout, onUserChange }) {
@@ -137,6 +138,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <CampusStudents ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Dashboard") {
     content = <CampusDashboard ui={ui} />;
+  } else if (user.role === "Institution Admin" && active === "Learning / LMS") {
+    content = <AdminLMS ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Communication") {
     content = <AdminCommunication ui={ui} />;
   } else if (user.role === "Institution Admin" && active === "Fees & Payments") {

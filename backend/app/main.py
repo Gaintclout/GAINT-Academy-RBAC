@@ -1128,7 +1128,7 @@ def my_academics(user:User=Depends(require_roles("Student","Teacher")),db:Sessio
     result=[]
     for a in assignments:
         unit=db.get(AcademicUnit,a.unit_id)
-        if unit: result.append({"assignment_id":a.id,"assignment_type":a.assignment_type,"unit_id":unit.id,"unit_type":unit.unit_type,"name":unit.name,"code":unit.code,"status":a.status})
+        if unit and unit.tenant_id==user.tenant_id: result.append({"assignment_id":a.id,"assignment_type":a.assignment_type,"unit_id":unit.id,"unit_type":unit.unit_type,"name":unit.name,"code":unit.code,"status":a.status})
     return result
 
 @app.get("/api/v1/teacher-roster")

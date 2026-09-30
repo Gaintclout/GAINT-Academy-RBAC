@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2405,21 +2405,25 @@ def admin_transport_vehicle_create(payload:AdminTransportVehicleIn,user:User=Dep
     return {"id":row.id,"status":row.status}
 
 @app.patch("/api/v1/admin/transport/routes/{route_id}")
-def admin_transport_route_update(route_id:int,payload:AdminTransportStatusUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+def admin_transport_route_update(route_id:int,payload:AdminTransportRouteUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     row=db.scalar(select(TransportRoute).where(TransportRoute.id==route_id,TransportRoute.tenant_id==user.tenant_id))
     if not row: raise HTTPException(404,"Route not found")
     status=payload.status.strip().title()
     if status not in {"Active","Inactive"}: raise HTTPException(400,"Invalid route status")
-    row.status=status; audit(db,user,"UPDATE","Transport Route",f"{row.code}:{status}"); db.commit()
+    code=payload.code.strip(); duplicate=db.scalar(select(TransportRoute.id).where(TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==row.campus_id,TransportRoute.code==code,TransportRoute.id!=row.id))
+    if duplicate: raise HTTPException(409,"Route code already exists for this campus")
+    row.name=payload.name.strip(); row.code=code; row.status=status; audit(db,user,"UPDATE","Transport Route",f"{row.code}:{status}"); db.commit()
     return {"id":row.id,"status":row.status}
 
 @app.patch("/api/v1/admin/transport/vehicles/{vehicle_id}")
-def admin_transport_vehicle_update(vehicle_id:int,payload:AdminTransportStatusUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+def admin_transport_vehicle_update(vehicle_id:int,payload:AdminTransportVehicleUpdate,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     row=db.scalar(select(TransportVehicle).where(TransportVehicle.id==vehicle_id,TransportVehicle.tenant_id==user.tenant_id))
     if not row: raise HTTPException(404,"Vehicle not found")
     status=payload.status.strip().title()
     if status not in {"Active","Inactive"}: raise HTTPException(400,"Invalid vehicle status")
-    row.status=status; audit(db,user,"UPDATE","Transport Vehicle",f"{row.vehicle_number}:{status}"); db.commit()
+    number=payload.vehicle_number.strip(); duplicate=db.scalar(select(TransportVehicle.id).where(TransportVehicle.tenant_id==user.tenant_id,TransportVehicle.vehicle_number==number,TransportVehicle.id!=row.id))
+    if duplicate: raise HTTPException(409,"Vehicle number already exists")
+    row.vehicle_number=number; row.label=payload.label.strip(); row.status=status; audit(db,user,"UPDATE","Transport Vehicle",f"{row.vehicle_number}:{status}"); db.commit()
     return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/admin/grievances")

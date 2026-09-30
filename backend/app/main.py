@@ -2126,6 +2126,29 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/events")
+def admin_events(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(AcademyEvent).where(AcademyEvent.tenant_id==user.tenant_id).order_by(AcademyEvent.starts_at.desc())).all()
+    registrations=db.scalars(select(EventRegistration).where(EventRegistration.tenant_id==user.tenant_id)).all()
+    reg_counts={}
+    for r in registrations: reg_counts[r.event_id]=reg_counts.get(r.event_id,0)+1
+    users={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()}
+    now=dt.datetime.utcnow()
+    return {"summary":{"events":len(rows),"published":sum(x.status=="Published" for x in rows),"upcoming":sum(x.ends_at>=now for x in rows),"registration_required":sum(bool(x.registration_required) for x in rows),"registrations":len(registrations)},"events":[{"id":x.id,"title":x.title,"event_type":x.event_type,"venue":x.venue,"starts_at":x.starts_at,"ends_at":x.ends_at,"audience_role":x.audience_role,"registration_required":x.registration_required,"registration_deadline":x.registration_deadline,"status":x.status,"campus_id":x.campus_id,"organizer":users[x.organizer_user_id].name if x.organizer_user_id in users else f"User #{x.organizer_user_id}","registrations":reg_counts.get(x.id,0)} for x in rows]}
+
+@app.post("/api/v1/admin/events")
+def admin_event_create(payload:CampusEventIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    try:
+        starts=dt.datetime.fromisoformat(payload.starts_at); ends=dt.datetime.fromisoformat(payload.ends_at)
+        deadline=dt.datetime.fromisoformat(payload.registration_deadline) if payload.registration_deadline else None
+    except ValueError: raise HTTPException(400,"Invalid event date/time")
+    if ends<=starts: raise HTTPException(400,"Event end must be after start")
+    if payload.audience_role not in {"ALL","Student","Teacher","Parent","Parent / Guardian"}: raise HTTPException(400,"Invalid audience role")
+    if deadline and deadline>starts: raise HTTPException(400,"Registration deadline must be before event start")
+    row=AcademyEvent(tenant_id=user.tenant_id,campus_id=user.campus_id,title=payload.title,event_type=payload.event_type,venue=payload.venue,starts_at=starts,ends_at=ends,organizer_user_id=user.id,audience_role=payload.audience_role,registration_required=payload.registration_required,registration_deadline=deadline,status="Published")
+    db.add(row); audit(db,user,"EVENT_CREATE","institution_event",payload.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
 @app.get("/api/v1/admin/lms-overview")
 def admin_lms_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     works=db.scalars(select(AcademicWork).where(AcademicWork.tenant_id==user.tenant_id).order_by(AcademicWork.id.desc())).all()

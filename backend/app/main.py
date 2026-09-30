@@ -2369,6 +2369,9 @@ def admin_library_book_update(book_id:int,payload:AdminLibraryBookUpdate,user:Us
     if not row: raise HTTPException(404,"Library book not found")
     status=payload.status.strip().title()
     if status not in {"Available","Issued","Lost","Damaged","Inactive"}: raise HTTPException(400,"Invalid library book status")
+    active_loan=db.scalar(select(LibraryLoan.id).where(LibraryLoan.tenant_id==user.tenant_id,LibraryLoan.book_id==row.id,LibraryLoan.returned_at.is_(None)))
+    if active_loan and status!="Issued": raise HTTPException(409,"A book with an active loan must remain Issued")
+    if not active_loan and status=="Issued": raise HTTPException(409,"Use the circulation workflow to mark a book as Issued")
     row.title=payload.title.strip(); row.author=payload.author.strip(); row.category=payload.category.strip(); row.isbn=payload.isbn.strip() if payload.isbn else None; row.status=status
     audit(db,user,"UPDATE","Library Book",f"{row.accession_no}:{status}"); db.commit()
     return {"id":row.id,"status":row.status}

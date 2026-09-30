@@ -409,6 +409,25 @@ def create_teacher_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles(
     return {"id":row.id,"leave_type":row.leave_type,"start_date":row.start_date,"end_date":row.end_date,
             "reason":row.reason,"status":row.status,"reviewer_note":row.reviewer_note,"created_at":row.created_at}
 
+@app.get("/api/v1/student/leave")
+def student_leave_requests(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(StudentLeaveRequest).where(StudentLeaveRequest.tenant_id==user.tenant_id,StudentLeaveRequest.student_user_id==user.id).order_by(StudentLeaveRequest.created_at.desc())).all()
+    return [{"id":x.id,"leave_type":x.leave_type,"start_date":x.start_date,"end_date":x.end_date,"reason":x.reason,"status":x.status,"reviewer_note":x.reviewer_note,"created_at":x.created_at} for x in rows]
+
+@app.post("/api/v1/student/leave")
+def create_student_leave(payload:TeacherLeaveIn,user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    try:
+        start=dt.datetime.fromisoformat(payload.start_date); end=dt.datetime.fromisoformat(payload.end_date)
+    except ValueError: raise HTTPException(400,"Invalid leave date")
+    if end<start: raise HTTPException(400,"Leave end date cannot be before start date")
+    overlap=db.scalar(select(StudentLeaveRequest).where(StudentLeaveRequest.tenant_id==user.tenant_id,StudentLeaveRequest.student_user_id==user.id,StudentLeaveRequest.status.in_(["PENDING","APPROVED"]),StudentLeaveRequest.start_date<=end,StudentLeaveRequest.end_date>=start))
+    if overlap: raise HTTPException(409,"A pending or approved leave request already overlaps these dates")
+    leave_type=payload.leave_type.strip().title()
+    if leave_type not in {"Casual","Sick","Emergency","Other"}: raise HTTPException(400,"Invalid leave type")
+    row=StudentLeaveRequest(tenant_id=user.tenant_id,student_user_id=user.id,requested_by_user_id=user.id,leave_type=leave_type,start_date=start,end_date=end,reason=payload.reason.strip(),status="PENDING")
+    db.add(row); audit(db,user,"CREATE","Student Leave",leave_type); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
 @app.get("/api/v1/parents/leave")
 def parent_leave_requests(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
     child_ids={x.student_user_id for x in db.scalars(select(ParentStudentLink).where(

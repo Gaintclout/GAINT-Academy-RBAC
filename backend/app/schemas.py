@@ -386,6 +386,15 @@ class AdminLibraryBookUpdate(BaseModel):
     status: str = Field(default="Available", max_length=30)
 
 
+class AdminLibraryLoanIn(BaseModel):
+    book_id: int = Field(ge=1)
+    borrower_user_id: int = Field(ge=1)
+    due_at: str
+
+class AdminLibraryReturnIn(BaseModel):
+    fine_amount: float = Field(default=0, ge=0)
+
+
 class AdminTransportRouteIn(BaseModel):
     campus_id: int = Field(ge=1)
     name: str = Field(min_length=1, max_length=120)

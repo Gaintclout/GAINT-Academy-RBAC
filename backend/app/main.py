@@ -55,8 +55,12 @@ def root():
     }
 
 @app.get("/health")
-def health():
-    return {"status":"ok","service":"GAINT Academy API"}
+def health(db: Session = Depends(get_db)):
+    try:
+        db.execute(select(1))
+    except Exception:
+        raise HTTPException(503, "Database unavailable")
+    return {"status":"ok","service":"GAINT Academy API","database":"ok"}
 
 @app.get("/api/v1/demo-accounts")
 def demo_accounts():

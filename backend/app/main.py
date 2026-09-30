@@ -328,6 +328,7 @@ def student_profile(user:User=Depends(require_roles("Student")),db:Session=Depen
         "name":user.name,
         "email":user.email,
         "campus_id":user.campus_id,
+        "campus_name":(db.get(AcademicUnit,user.campus_id).name if user.campus_id and db.get(AcademicUnit,user.campus_id) and db.get(AcademicUnit,user.campus_id).tenant_id==user.tenant_id else None),
         "status":"Active" if user.is_active else "Withdrawn",
         "academics":academics,
         "guardians":guardians,

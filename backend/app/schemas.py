@@ -325,3 +325,29 @@ class CampusEventIn(BaseModel):
 class CampusGrievanceUpdateIn(BaseModel):
     status: str
     latest_update: str = Field(min_length=2, max_length=2000)
+
+
+class HostelIn(BaseModel):
+    campus_id: int = Field(default=1, ge=1)
+    name: str = Field(min_length=2, max_length=160)
+    code: str = Field(min_length=1, max_length=60)
+    hostel_type: str = Field(default="GENERAL", max_length=30)
+    warden_name: str = Field(default="", max_length=120)
+    warden_phone: str = Field(default="", max_length=40)
+
+class HostelRoomIn(BaseModel):
+    hostel_id: int
+    room_number: str = Field(min_length=1, max_length=40)
+    floor: str = Field(default="", max_length=40)
+    capacity: int = Field(default=1, ge=1, le=100)
+    room_type: str = Field(default="STANDARD", max_length=60)
+
+class HostelAllocationIn(BaseModel):
+    hostel_id: int
+    room_id: int
+    student_user_id: int
+    bed_number: str = Field(default="", max_length=40)
+    notes: str = Field(default="", max_length=1000)
+
+class HostelCheckoutIn(BaseModel):
+    notes: str = Field(default="", max_length=1000)

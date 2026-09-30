@@ -2453,7 +2453,35 @@ def admin_attendance_overview(user:User=Depends(require_roles("Institution Admin
     for x in entries[:500]:
         session=sessions.get(x.session_id); unit=units.get(session.unit_id) if session else None
         rows.append({"id":x.id,"student_user_id":x.student_user_id,"student_name":names.get(x.student_user_id,f"Student #{x.student_user_id}"),"session_id":x.session_id,"session_title":session.title if session else f"Session #{x.session_id}","unit_name":unit.name if unit else "—","status":x.status,"note":x.note,"marked_at":x.marked_at})
-    return {"summary":{"records":len(entries),"present":counts.get("PRESENT",0),"absent":counts.get("ABSENT",0),"late":counts.get("LATE",0),"excused":counts.get("EXCUSED",0),"attendance_percentage":round(attended*100/counted,1) if counted else None},"entries":rows}
+    admin_sessions=db.scalars(select(ClassSession).where(ClassSession.tenant_id==user.tenant_id).order_by(ClassSession.starts_at.desc()).limit(200)).all()
+    return {"summary":{"records":len(entries),"present":counts.get("PRESENT",0),"absent":counts.get("ABSENT",0),"late":counts.get("LATE",0),"excused":counts.get("EXCUSED",0),"attendance_percentage":round(attended*100/counted,1) if counted else None},"entries":rows,"sessions":[{"id":x.id,"title":x.title,"unit_id":x.unit_id,"starts_at":x.starts_at,"status":x.status} for x in admin_sessions]}
+
+@app.get("/api/v1/admin/attendance/{session_id}")
+def admin_session_attendance(session_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    session=db.scalar(select(ClassSession).where(ClassSession.id==session_id,ClassSession.tenant_id==user.tenant_id))
+    if not session: raise HTTPException(404,"Class session not found")
+    students=_students_for_unit(db,user.tenant_id,session.unit_id)
+    result=[]
+    for sid in students:
+        student=db.scalar(select(User).where(User.id==sid,User.tenant_id==user.tenant_id,User.role=="Student"))
+        if not student: continue
+        entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id,AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==sid))
+        result.append({"student_user_id":sid,"student_name":student.name,"status":entry.status if entry else "UNMARKED","note":entry.note if entry else ""})
+    return {"session":{"id":session.id,"title":session.title,"starts_at":session.starts_at},"students":result}
+
+@app.put("/api/v1/admin/attendance/{session_id}")
+def admin_mark_attendance(session_id:int,payload:AttendanceMarkIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    session=db.scalar(select(ClassSession).where(ClassSession.id==session_id,ClassSession.tenant_id==user.tenant_id))
+    if not session: raise HTTPException(404,"Class session not found")
+    if payload.student_user_id not in _students_for_unit(db,user.tenant_id,session.unit_id): raise HTTPException(400,"Student is not enrolled in this class")
+    status=payload.status.strip().upper()
+    if status not in {"PRESENT","ABSENT","LATE","EXCUSED"}: raise HTTPException(400,"Invalid attendance status")
+    entry=db.scalar(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id,AttendanceEntry.session_id==session.id,AttendanceEntry.student_user_id==payload.student_user_id))
+    if not entry:
+        entry=AttendanceEntry(tenant_id=user.tenant_id,session_id=session.id,student_user_id=payload.student_user_id,marked_by=user.id); db.add(entry)
+    entry.status=status; entry.note=payload.note.strip(); entry.marked_by=user.id; entry.marked_at=dt.datetime.utcnow()
+    audit(db,user,"ATTENDANCE_ADMIN",f"session:{session.id}",f"student={payload.student_user_id}:{status}"); db.commit()
+    return {"ok":True,"status":status}
 
 @app.get("/api/v1/admin/timetable")
 def admin_timetable(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

@@ -19,7 +19,13 @@ class Settings(BaseSettings):
             raise RuntimeError("AUTO_CREATE_SCHEMA must be false in production; run Alembic migrations before startup")
         if self.is_production and self.SEED_DEMO_DATA:
             raise RuntimeError("SEED_DEMO_DATA must be false in production")
-        if self.is_production and self.SECRET_KEY == "change-this-in-production":
-            raise RuntimeError("SECRET_KEY must be configured in production")
+        if self.is_production and (self.SECRET_KEY in {"change-this-in-production","replace-in-production"} or len(self.SECRET_KEY) < 32):
+            raise RuntimeError("SECRET_KEY must be a strong production secret of at least 32 characters")
+        if self.is_production and not self.DATABASE_URL.lower().startswith(("postgresql://","postgresql+psycopg2://")):
+            raise RuntimeError("DATABASE_URL must use PostgreSQL in production")
+        if self.is_production:
+            origins=[x.strip() for x in self.CORS_ORIGINS.split(",") if x.strip()]
+            if not origins or "*" in origins or any(x.startswith("http://") for x in origins):
+                raise RuntimeError("CORS_ORIGINS must contain only explicit HTTPS origins in production")
 
 settings = Settings()

@@ -596,6 +596,7 @@ class HostelAllocation(Base):
 
 class HealthRecord(Base):
     __tablename__ = "health_records"
+    __table_args__ = (UniqueConstraint("tenant_id","person_user_id", name="uq_health_record_person"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(Integer, index=True)
     campus_id: Mapped[int] = mapped_column(Integer, index=True)

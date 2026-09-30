@@ -93,3 +93,30 @@ def test_accounts_concession_refund_and_reconciliation_validation():
     assert recon.status_code==200
     assert recon.json()["status"] in {"MATCHED","VARIANCE"}
     assert client.post("/api/v1/finance/reconciliations",headers=h,json={"reconciliation_date":"2026-09-29","bank_amount":0,"reference":"BANK-DAY","notes":""}).status_code==409
+
+
+def test_parent_receipts_require_active_linked_student():
+    i=ids(); h=auth("accounts1@test.local")
+    fee=create_fee(h,i["student1@test.local"],"PARENT-ACTIVE",25).json()
+    client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":25,"reference":"PARENT-ACTIVE-R1"})
+    parent=auth("parent1@test.local")
+    assert client.get(f"/api/v1/fee-ledger/{fee['id']}/receipts",headers=parent).status_code==200
+    with SessionLocal() as db:
+        student=db.get(User,i["student1@test.local"])
+        student.is_active=False
+        db.commit()
+    assert client.get(f"/api/v1/fee-ledger/{fee['id']}/receipts",headers=parent).status_code==403
+
+
+def test_parent_children_hide_inactive_linked_student():
+    i=ids(); parent=auth("parent1@test.local")
+    assert any(x["id"]==i["student1@test.local"] for x in client.get("/api/v1/parents/children",headers=parent).json())
+    with SessionLocal() as db:
+        student=db.get(User,i["student1@test.local"])
+        student.is_active=False
+        db.commit()
+    rows=client.get("/api/v1/parents/children",headers=parent)
+    assert rows.status_code==200
+    assert all(x["id"]!=i["student1@test.local"] for x in rows.json())
+    assert client.get(f"/api/v1/parents/children/{i['student1@test.local']}/fees",headers=parent).status_code==404
+    assert client.get(f"/api/v1/parents/children/{i['student1@test.local']}/location",headers=parent).status_code==404

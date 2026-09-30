@@ -2126,6 +2126,21 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/dashboard")
+def admin_dashboard(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()
+    students=[x for x in users if x.role=="Student"]; teachers=[x for x in users if x.role=="Teacher"]
+    units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id)).all()
+    fees=db.scalars(select(FeeLedger).where(FeeLedger.tenant_id==user.tenant_id)).all()
+    payments=db.scalars(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id)).all()
+    grievances=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id)).all()
+    visitors=db.scalars(select(CampusVisitor).where(CampusVisitor.tenant_id==user.tenant_id)).all()
+    hostels=db.scalars(select(Hostel).where(Hostel.tenant_id==user.tenant_id)).all()
+    allocations=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.status=="ACTIVE")).all()
+    inventory=db.scalars(select(CampusInventoryItem).where(CampusInventoryItem.tenant_id==user.tenant_id)).all()
+    assets=db.scalars(select(CampusAsset).where(CampusAsset.tenant_id==user.tenant_id)).all()
+    return {"summary":{"students":len(students),"active_students":sum(x.is_active for x in students),"teachers":len(teachers),"active_teachers":sum(x.is_active for x in teachers),"academic_units":len(units),"fee_assigned":round(sum(float(x.amount or 0) for x in fees),2),"fee_collected":round(sum(float(x.amount or 0) for x in payments),2),"open_grievances":sum(x.status in {"Open","In Progress"} for x in grievances),"visitors_inside":sum(x.status=="CHECKED_IN" for x in visitors),"hostels":len(hostels),"hostel_occupancy":len(allocations),"low_stock":sum(x.quantity<=x.minimum_quantity for x in inventory),"assets_attention":sum(x.condition in {"DAMAGED","REPAIR"} for x in assets)}}
+
 @app.get("/api/v1/admin/health")
 def admin_health(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     records=db.scalars(select(HealthRecord).where(HealthRecord.tenant_id==user.tenant_id).order_by(HealthRecord.updated_at.desc())).all()

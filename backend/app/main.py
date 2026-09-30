@@ -2126,6 +2126,22 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/grievances")
+def admin_grievances(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(Grievance).where(Grievance.tenant_id==user.tenant_id).order_by(Grievance.created_at.desc())).all()
+    creators={x.id:x for x in db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()}
+    return {"summary":{"total":len(rows),"open":sum(x.status=="Open" for x in rows),"in_progress":sum(x.status=="In Progress" for x in rows),"resolved":sum(x.status in {"Resolved","Closed"} for x in rows),"urgent":sum(x.priority=="Urgent" and x.status not in {"Resolved","Closed"} for x in rows)},"grievances":[{"id":x.id,"ticket_no":x.ticket_no,"creator_name":creators[x.created_by_user_id].name if x.created_by_user_id in creators else f"User #{x.created_by_user_id}","creator_role":creators[x.created_by_user_id].role if x.created_by_user_id in creators else "Unknown","campus_id":x.campus_id,"category":x.category,"subject":x.subject,"details":x.details,"priority":x.priority,"status":x.status,"latest_update":x.latest_update,"created_at":x.created_at,"updated_at":x.updated_at} for x in rows]}
+
+@app.patch("/api/v1/admin/grievances/{grievance_id}")
+def admin_grievance_update(grievance_id:int,payload:CampusGrievanceUpdateIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(Grievance).where(Grievance.id==grievance_id,Grievance.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Grievance not found")
+    status=payload.status.strip()
+    if status not in {"Open","In Progress","Resolved","Closed"}: raise HTTPException(400,"Invalid grievance status")
+    row.status=status; row.latest_update=payload.latest_update.strip(); row.updated_at=dt.datetime.utcnow()
+    audit(db,user,"GRIEVANCE_UPDATE",f"grievance:{row.id}",f"ticket={row.ticket_no};status={status}"); db.commit()
+    return {"id":row.id,"status":row.status,"latest_update":row.latest_update}
+
 @app.get("/api/v1/admin/events")
 def admin_events(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     rows=db.scalars(select(AcademyEvent).where(AcademyEvent.tenant_id==user.tenant_id).order_by(AcademyEvent.starts_at.desc())).all()

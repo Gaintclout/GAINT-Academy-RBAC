@@ -2207,6 +2207,15 @@ def admin_visitor_checkin(payload:CampusVisitorIn,campus_id:int,user:User=Depend
     db.add(row); audit(db,user,"VISITOR_CHECK_IN","institution_visitor",f"{payload.name};campus={campus_id}"); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
 
+@app.put("/api/v1/admin/visitors/{visitor_id}")
+def admin_visitor_update(visitor_id:int,payload:CampusVisitorIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CampusVisitor).where(CampusVisitor.id==visitor_id,CampusVisitor.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Visitor not found")
+    if row.status!="CHECKED_IN": raise HTTPException(409,"Checked-out visitor records are locked")
+    row.name=payload.name.strip(); row.phone=payload.phone.strip(); row.purpose=payload.purpose.strip(); row.person_to_meet=payload.person_to_meet.strip()
+    audit(db,user,"VISITOR_UPDATE",f"institution_visitor:{row.id}",row.name); db.commit()
+    return {"id":row.id,"status":row.status}
+
 @app.patch("/api/v1/admin/visitors/{visitor_id}")
 def admin_visitor_checkout(visitor_id:int,payload:CampusVisitorStatusIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     row=db.scalar(select(CampusVisitor).where(CampusVisitor.id==visitor_id,CampusVisitor.tenant_id==user.tenant_id))

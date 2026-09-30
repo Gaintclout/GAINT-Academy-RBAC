@@ -426,6 +426,33 @@ def test_campus_admin_mutations_are_role_protected():
     }).status_code==403
 
 
+def test_auditor_workspace_is_read_only_and_role_protected():
+    auditor=_login("auditor@gaintacademy.com")
+    student=_login("student@gaintacademy.com")
+    for path in ("/api/v1/auditor/dashboard","/api/v1/auditor/compliance","/api/v1/auditor/exceptions","/api/v1/auditor/evidence","/api/v1/auditor/export-reports"):
+        assert client.get(path,headers=auditor).status_code==200
+        assert client.get(path,headers=student).status_code==403
+    assert client.get("/api/v1/audit",headers=auditor).status_code==200
+    assert client.post("/api/v1/hr/recruitment",headers=auditor,json={
+        "name":"Blocked Auditor Mutation","email":"auditor-blocked@example.com","position":"Teacher"
+    }).status_code==403
+    assert client.post("/api/v1/campus/inventory",headers=auditor,json={
+        "name":"Blocked","category":"Audit","item_code":"AUD-BLOCK","quantity":1,
+        "minimum_quantity":0,"location":"Store","status":"ACTIVE","notes":""
+    }).status_code==403
+
+
+def test_auditor_evidence_summary_matches_returned_tenant_records():
+    auditor=_login("auditor@gaintacademy.com")
+    response=client.get("/api/v1/auditor/evidence",headers=auditor)
+    assert response.status_code==200
+    data=response.json()
+    rows=data["evidence"]
+    assert data["summary"]["total"]>=len(rows)
+    assert all(x["status"] in {"AVAILABLE","MISSING"} for x in rows)
+    assert all(x["module"] in {"HR","Finance","Admissions","Audit"} for x in rows)
+
+
 def test_parent_role_endpoints_are_protected():
     parent=_login("parent@gaintacademy.com")
     student=_login("student@gaintacademy.com")

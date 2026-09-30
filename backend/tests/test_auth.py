@@ -399,6 +399,33 @@ def test_teacher_event_endpoint_is_teacher_only():
     assert client.get("/api/v1/teacher/events",headers=student).status_code==403
 
 
+def test_campus_admin_rejects_invalid_operational_data():
+    h=_login("campus@gaintacademy.com")
+    assert client.post("/api/v1/campus/inventory",headers=h,json={
+        "name":"Invalid Stock","category":"Test","item_code":"NEG-STOCK","quantity":-1,
+        "minimum_quantity":0,"location":"Store","status":"ACTIVE","notes":""
+    }).status_code==400
+    assert client.post("/api/v1/campus/assets",headers=h,json={
+        "asset_code":"","name":"","category":"IT","serial_number":"","location":"",
+        "assigned_to":"","condition":"GOOD","status":"ACTIVE","notes":""
+    }).status_code==400
+    assert client.post("/api/v1/campus/events",headers=h,json={
+        "title":"","event_type":"General","venue":"Hall","starts_at":"2026-10-10T10:00:00",
+        "ends_at":"2026-10-10T11:00:00","audience_role":"ALL","registration_required":False
+    }).status_code==400
+
+
+def test_campus_admin_mutations_are_role_protected():
+    student=_login("student@gaintacademy.com")
+    assert client.post("/api/v1/campus/visitors",headers=student,json={
+        "name":"Blocked","phone":"","purpose":"Test","person_to_meet":""
+    }).status_code==403
+    assert client.post("/api/v1/campus/inventory",headers=student,json={
+        "name":"Blocked","category":"Test","item_code":"BLOCK","quantity":1,
+        "minimum_quantity":0,"location":"","status":"ACTIVE","notes":""
+    }).status_code==403
+
+
 def test_parent_role_endpoints_are_protected():
     parent=_login("parent@gaintacademy.com")
     student=_login("student@gaintacademy.com")

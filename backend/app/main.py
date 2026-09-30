@@ -177,15 +177,6 @@ def update_academic_unit(unit_id:int,payload:AcademicUnitIn,user:User=Depends(re
     audit(db,user,"UPDATE","academic_structure",f"{row.unit_type}:{row.id}:{row.name}:{status}"); db.commit(); db.refresh(row)
     return {"id":row.id,"unit_type":row.unit_type,"name":row.name,"code":row.code,"parent_id":row.parent_id,"campus_id":row.campus_id,"status":row.status}
 
-@app.delete("/api/v1/academic-structure/{unit_id}")
-def delete_academic_unit(unit_id:int,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
-    row=db.get(AcademicUnit,unit_id)
-    if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Academic unit not found")
-    child=db.scalar(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.parent_id==unit_id))
-    if child: raise HTTPException(409,"Remove child units before deleting this item")
-    audit(db,user,"DELETE","academic_structure",f"{row.unit_type}:{row.name}"); db.delete(row); db.commit()
-    return {"ok":True}
-
 @app.put("/api/v1/admin/students/{student_id}/academics")
 def admin_manage_student_academics(student_id:int,payload:StudentAcademicManagementIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     student=db.get(User,student_id)

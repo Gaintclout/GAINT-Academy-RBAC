@@ -514,6 +514,19 @@ def teacher_events(user:User=Depends(require_roles("Teacher")),db:Session=Depend
                        "status":event.status})
     return result
 
+@app.post("/api/v1/teacher/events/{event_id}/register")
+def register_teacher_event(event_id:int,user:User=Depends(require_roles("Teacher")),db:Session=Depends(get_db)):
+    event=db.scalar(select(AcademyEvent).where(AcademyEvent.id==event_id,AcademyEvent.tenant_id==user.tenant_id,AcademyEvent.status=="Published"))
+    if not event or (event.campus_id is not None and event.campus_id!=user.campus_id) or event.audience_role not in ("ALL","Teacher"):
+        raise HTTPException(404,"Event not available")
+    if not event.registration_required: raise HTTPException(409,"Registration is not required for this event")
+    if event.registration_deadline and event.registration_deadline<dt.datetime.utcnow(): raise HTTPException(409,"Event registration is closed")
+    existing=db.scalar(select(EventRegistration).where(EventRegistration.tenant_id==user.tenant_id,EventRegistration.event_id==event.id,EventRegistration.user_id==user.id))
+    if existing: return {"id":existing.id,"status":existing.status}
+    row=EventRegistration(tenant_id=user.tenant_id,event_id=event.id,user_id=user.id,status="Registered")
+    db.add(row); audit(db,user,"REGISTER","Events",event.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
 @app.get("/api/v1/student/events")
 def student_events(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
     events=db.scalars(select(AcademyEvent).where(

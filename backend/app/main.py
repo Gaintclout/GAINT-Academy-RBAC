@@ -2126,6 +2126,15 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/library")
+def admin_library(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    books=db.scalars(select(LibraryBook).where(LibraryBook.tenant_id==user.tenant_id).order_by(LibraryBook.title)).all()
+    loans=db.scalars(select(LibraryLoan).where(LibraryLoan.tenant_id==user.tenant_id).order_by(LibraryLoan.issued_at.desc())).all()
+    book_map={x.id:x for x in books}; borrower_ids={x.borrower_user_id for x in loans}
+    borrowers=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(borrower_ids))).all() if borrower_ids else []
+    borrower_map={x.id:x for x in borrowers}; now=dt.datetime.utcnow()
+    return {"summary":{"books":len(books),"available":sum(x.status=="Available" for x in books),"loans":len(loans),"active_loans":sum(x.returned_at is None for x in loans),"overdue":sum(x.returned_at is None and x.due_at<now for x in loans),"fines":round(sum(float(x.fine_amount or 0) for x in loans),2)},"books":[{"id":x.id,"campus_id":x.campus_id,"accession_no":x.accession_no,"isbn":x.isbn,"title":x.title,"author":x.author,"category":x.category,"status":x.status} for x in books],"loans":[{"id":x.id,"campus_id":x.campus_id,"book_title":book_map[x.book_id].title if x.book_id in book_map else f"Book #{x.book_id}","borrower_name":borrower_map[x.borrower_user_id].name if x.borrower_user_id in borrower_map else f"User #{x.borrower_user_id}","borrower_role":borrower_map[x.borrower_user_id].role if x.borrower_user_id in borrower_map else "Unknown","issued_at":x.issued_at,"due_at":x.due_at,"returned_at":x.returned_at,"fine_amount":float(x.fine_amount or 0),"status":x.status,"overdue":x.returned_at is None and x.due_at<now} for x in loans]}
+
 @app.get("/api/v1/admin/transport")
 def admin_transport(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     routes=db.scalars(select(TransportRoute).where(TransportRoute.tenant_id==user.tenant_id).order_by(TransportRoute.name)).all()

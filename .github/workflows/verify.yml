@@ -42,6 +42,8 @@ jobs:
           AUTO_CREATE_SCHEMA: "false"
           SEED_DEMO_DATA: "false"
           SECRET_KEY: ci-production-secret-not-for-deployment
+          DATABASE_URL: postgresql+psycopg2://ci:ci@localhost:5432/gaint_academy_ci
+          CORS_ORIGINS: https://academy.gaintclout.com
         run: python -c "from app.main import app; print(app.title)"
 
       - name: Run backend tests

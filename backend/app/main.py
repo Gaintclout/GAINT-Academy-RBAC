@@ -2452,7 +2452,20 @@ def admin_communication(user:User=Depends(require_roles("Institution Admin")),db
         sr=sender.role if sender and sender.tenant_id==user.tenant_id else "Unknown"; rr=recipient.role if recipient and recipient.tenant_id==user.tenant_id else "Unknown"
         sent_by_role[sr]=sent_by_role.get(sr,0)+1; to_role[rr]=to_role.get(rr,0)+1
         result.append({"id":row.id,"sender":sender.name if sender and sender.tenant_id==user.tenant_id else "Unknown","sender_role":sr,"recipient":recipient.name if recipient and recipient.tenant_id==user.tenant_id else "Unknown","recipient_role":rr,"student_name":student.name if student and student.tenant_id==user.tenant_id else None,"subject":row.subject,"body":row.body,"status":row.status,"created_at":row.created_at})
-    return {"summary":{"messages":len(rows),"teacher_sent":sent_by_role.get("Teacher",0),"parent_sent":sent_by_role.get("Parent / Guardian",0),"to_students":to_role.get("Student",0),"to_parents":to_role.get("Parent / Guardian",0)},"messages":result}
+    recipients=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.is_active==True,User.id!=user.id).order_by(User.role,User.name)).all()
+    return {"summary":{"messages":len(rows),"teacher_sent":sent_by_role.get("Teacher",0),"parent_sent":sent_by_role.get("Parent / Guardian",0),"to_students":to_role.get("Student",0),"to_parents":to_role.get("Parent / Guardian",0)},"messages":result,"recipients":[{"id":x.id,"name":x.name,"role":x.role,"email":x.email,"campus_id":x.campus_id} for x in recipients]}
+
+@app.post("/api/v1/admin/communication")
+def admin_send_message(payload:TeacherMessageIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    recipient=db.scalar(select(User).where(User.id==payload.recipient_user_id,User.tenant_id==user.tenant_id,User.is_active==True))
+    if not recipient: raise HTTPException(404,"Recipient not found in this institution")
+    student=None
+    if payload.student_user_id is not None:
+        student=db.scalar(select(User).where(User.id==payload.student_user_id,User.tenant_id==user.tenant_id,User.role=="Student"))
+        if not student: raise HTTPException(400,"Invalid student context")
+    row=CommunicationMessage(tenant_id=user.tenant_id,sender_user_id=user.id,recipient_user_id=recipient.id,student_user_id=student.id if student else None,subject=payload.subject.strip(),body=payload.body.strip())
+    db.add(row); audit(db,user,"MESSAGE_ADMIN","Communication",f"to={recipient.id};{row.subject}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status,"created_at":row.created_at}
 
 @app.get("/api/v1/admin/exams-results")
 def admin_exams_results(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

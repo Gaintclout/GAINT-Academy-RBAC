@@ -22,13 +22,14 @@ export default function StudentDashboard({ user, ui }) {
 
   const now=new Date();
   const upcomingSessions=sessions.filter(x=>new Date(x.starts_at)>=now).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at)).slice(0,4);
-  const pendingWork=work.filter(x=>!x.submission||!["SUBMITTED","GRADED"].includes(x.submission.status)).length;
+  const submittableWork=work.filter(x=>["HOMEWORK","ASSIGNMENT"].includes(x.work_type));
+  const pendingWork=submittableWork.filter(x=>(!x.submission||!["SUBMITTED","GRADED"].includes(x.submission.status))&&(!x.due_at||new Date(x.due_at)>=now)).length;
   const upcomingWork=work.filter(x=>x.due_at&&new Date(x.due_at)>=now).sort((a,b)=>new Date(a.due_at)-new Date(b.due_at)).slice(0,4);
   const balance=fees.reduce((sum,row)=>sum+Number(row.balance||0),0);
   const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
   const cards=[
     ["Attendance",attendance?.percentage==null?"—":attendance.percentage+"%","Current marked attendance"],
-    ["Pending Work",pendingWork,"Homework / assignments / exams"],
+    ["Pending Work",pendingWork,"Homework / assignments"],
     ["Upcoming Classes",upcomingSessions.length,"Next scheduled sessions"],
     ["Fee Balance",money(balance),"Outstanding assigned fees"]
   ];
@@ -49,7 +50,7 @@ export default function StudentDashboard({ user, ui }) {
       <section className="panel"><div className="panel-title"><b>My Academic Snapshot</b><span>Live</span></div>
         <div className="timeline-list">
           <div className="timeline-row"><span>Attendance</span><b>{attendance?.attended||0} attended</b><small>{attendance?.absent||0} absent · {attendance?.late||0} late</small></div>
-          <div className="timeline-row"><span>Work</span><b>{work.length} published</b><small>{pendingWork} pending</small></div>
+          <div className="timeline-row"><span>Work</span><b>{work.length} published</b><small>{pendingWork} actionable homework / assignments</small></div>
           <div className="timeline-row"><span>Fees</span><b>{money(balance)}</b><small>Outstanding balance</small></div>
         </div>
       </section>

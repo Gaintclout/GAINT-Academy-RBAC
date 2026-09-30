@@ -16,7 +16,6 @@ export default function AcademicStructure({ui}){
  const parentType={SCHOOL_FACULTY:"CAMPUS",DEPARTMENT:"SCHOOL_FACULTY",PROGRAM:"DEPARTMENT",ACADEMIC_PERIOD:"PROGRAM",COURSE:"ACADEMIC_PERIOD",SECTION_BATCH:"COURSE"}[type];
  const parents=useMemo(()=>parentType?rows.filter(r=>r.unit_type===parentType):[],[rows,parentType]);
  async function add(){try{setErr("");setMsg("");await api.post("/api/v1/academic-structure",{unit_type:type,name,code,parent_id:parent?Number(parent):null,campus_id:1,status:"Active"});setName("");setCode("");setParent("");setMsg("Academic unit added.");load()}catch(e){setErr(e?.response?.data?.detail||"Unable to add academic unit.")}}
- async function remove(id){if(!window.confirm("Delete this academic unit?"))return;try{await api.delete("/api/v1/academic-structure/"+id);setMsg("Academic unit deleted.");load()}catch(e){setErr(e?.response?.data?.detail||"Unable to delete academic unit.")}}
  const labelFor=t=>labels.find(x=>x[0]===t)?.[1]||t;
  return <div>
   <section className="role-hero"><div><span className="eyebrow">{ui.label} Configuration</span><h1>Academic Structure</h1><p>Build the hierarchy used for academics, enrollment and reporting.</p></div><div className="hero-badge">{rows.length} Units</div></section>
@@ -36,8 +35,8 @@ export default function AcademicStructure({ui}){
    </section>
   </div>
   <section className="panel structure-table"><div className="panel-title"><b>Configured Structure</b><span>{rows.length} records</span></div>
-   <div className="table-scroll"><table><thead><tr><th>Type</th><th>Name</th><th>Code</th><th>Parent</th><th>Status</th><th>Action</th></tr></thead><tbody>
-   {rows.length===0?<tr><td colSpan="6" className="empty-cell">No academic structure configured yet.</td></tr>:rows.map(r=><tr key={r.id}><td>{labelFor(r.unit_type)}</td><td><b>{r.name}</b></td><td>{r.code}</td><td>{rows.find(x=>x.id===r.parent_id)?.name||"—"}</td><td>{r.status}</td><td><button className="table-action danger" onClick={()=>remove(r.id)}>Delete</button></td></tr>)}
+   <div className="table-scroll"><table><thead><tr><th>Type</th><th>Name</th><th>Code</th><th>Parent</th><th>Status</th></tr></thead><tbody>
+   {rows.length===0?<tr><td colSpan="5" className="empty-cell">No academic structure configured yet.</td></tr>:rows.map(r=><tr key={r.id}><td>{labelFor(r.unit_type)}</td><td><b>{r.name}</b></td><td>{r.code}</td><td>{rows.find(x=>x.id===r.parent_id)?.name||"—"}</td><td>{r.status}</td></tr>)}
    </tbody></table></div>
   </section>
  </div>

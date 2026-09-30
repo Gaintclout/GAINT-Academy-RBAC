@@ -2126,6 +2126,22 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/exams-results")
+def admin_exams_results(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    exams=db.scalars(select(AcademicWork).where(AcademicWork.tenant_id==user.tenant_id,AcademicWork.work_type=="EXAM").order_by(AcademicWork.id.desc())).all()
+    results=db.scalars(select(ExamResult).where(ExamResult.tenant_id==user.tenant_id)).all()
+    by_exam={}
+    for r in results: by_exam.setdefault(r.work_id,[]).append(r)
+    rows=[]
+    for exam in exams:
+        unit=db.get(AcademicUnit,exam.unit_id); teacher=db.get(User,exam.teacher_user_id); saved=by_exam.get(exam.id,[])
+        passed=sum(r.result_status=="PASS" for r in saved); failed=sum(r.result_status=="FAIL" for r in saved); published=sum(bool(r.published) for r in saved)
+        avg=round(sum(r.percentage for r in saved)/len(saved),1) if saved else None
+        rows.append({"id":exam.id,"title":exam.title,"unit_name":unit.name if unit else f"Unit #{exam.unit_id}","teacher_name":teacher.name if teacher else f"Teacher #{exam.teacher_user_id}","max_marks":exam.max_marks,"due_at":exam.due_at,"results":len(saved),"passed":passed,"failed":failed,"published":published,"average_percentage":avg,"status":"PUBLISHED" if saved and published==len(saved) else "DRAFT" if saved else "AWAITING RESULTS"})
+    published_results=sum(bool(r.published) for r in results)
+    pass_count=sum(r.result_status=="PASS" for r in results)
+    return {"summary":{"exams":len(exams),"results":len(results),"published":published_results,"draft":len(results)-published_results,"pass_rate":round(pass_count*100/len(results),1) if results else None},"exams":rows}
+
 @app.get("/api/v1/admin/attendance-overview")
 def admin_attendance_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     entries=db.scalars(select(AttendanceEntry).where(AttendanceEntry.tenant_id==user.tenant_id).order_by(AttendanceEntry.marked_at.desc())).all()

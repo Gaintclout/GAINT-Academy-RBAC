@@ -351,3 +351,20 @@ class HostelAllocationIn(BaseModel):
 
 class HostelCheckoutIn(BaseModel):
     notes: str = Field(default="", max_length=1000)
+
+
+class HealthRecordIn(BaseModel):
+    person_user_id: int
+    blood_group: str = Field(default="", max_length=10)
+    allergies: str = Field(default="", max_length=2000)
+    medical_conditions: str = Field(default="", max_length=2000)
+    emergency_contact_name: str = Field(default="", max_length=120)
+    emergency_contact_phone: str = Field(default="", max_length=40)
+    notes: str = Field(default="", max_length=2000)
+
+class HealthVisitIn(BaseModel):
+    person_user_id: int
+    visit_type: str = Field(default="GENERAL", max_length=40)
+    complaint: str = Field(min_length=1, max_length=2000)
+    action_taken: str = Field(default="", max_length=2000)
+    disposition: str = Field(default="RETURNED", max_length=40)

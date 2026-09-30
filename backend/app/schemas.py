@@ -422,3 +422,15 @@ class AdminInventoryIn(CampusInventoryIn):
 
 class AdminAssetIn(CampusAssetIn):
     campus_id: int = Field(ge=1)
+
+
+class AdminAcademicWorkIn(AcademicWorkIn):
+    teacher_user_id: int
+
+class AdminAcademicWorkUpdate(BaseModel):
+    teacher_user_id: int
+    title: str = Field(min_length=2, max_length=180)
+    description: str = ""
+    max_marks: float = Field(default=0, ge=0)
+    due_at: Optional[str] = None
+    status: str = Field(default="PUBLISHED", max_length=30)

@@ -177,9 +177,7 @@ function StudentEvents() {
       .then((response) => { setEvents(response.data || []); setError(""); })
       .catch((e) => setError(e?.response?.data?.detail || "Unable to load events."));
   useEffect(() => {
-    loadEvents(); /*
-      .then((response) => { setEvents(response.data || []); setError(""); })
-      .catch((e) => setError(e?.response?.data?.detail || "Unable to load events.")); */
+    loadEvents();
   }, []);
   async function register(id){try{await api.post("/api/v1/student/events/"+id+"/register");setMessage("Event registration completed.");loadEvents()}catch(e){setError(e?.response?.data?.detail||"Unable to register for event.")}}
 

@@ -446,8 +446,7 @@ def register_student_event(event_id:int,user:User=Depends(require_roles("Student
 
 @app.get("/api/v1/parents/leave")
 def parent_leave_requests(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
-    child_ids={x.student_user_id for x in db.scalars(select(ParentStudentLink).where(
-        ParentStudentLink.parent_user_id==user.id,ParentStudentLink.tenant_id==user.tenant_id)).all()}
+    child_ids={x["id"] for x in parent_children(user,db)}
     rows=db.scalars(select(StudentLeaveRequest).where(
         StudentLeaveRequest.tenant_id==user.tenant_id,
         StudentLeaveRequest.requested_by_user_id==user.id,
@@ -502,12 +501,11 @@ def create_parent_grievance(payload:GrievanceIn,user:User=Depends(require_roles(
 
 @app.get("/api/v1/parents/events")
 def parent_events(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
-    links=db.scalars(select(ParentStudentLink).where(
-        ParentStudentLink.parent_user_id==user.id,ParentStudentLink.tenant_id==user.tenant_id)).all()
+    children=parent_children(user,db)
     campus_ids=set()
-    for link in links:
-        student=db.get(User,link.student_user_id)
-        if student and student.tenant_id==user.tenant_id and student.campus_id is not None:
+    for child in children:
+        student=db.get(User,child["id"])
+        if student and student.campus_id is not None:
             campus_ids.add(student.campus_id)
     events=db.scalars(select(AcademyEvent).where(
         AcademyEvent.tenant_id==user.tenant_id,AcademyEvent.status=="Published"

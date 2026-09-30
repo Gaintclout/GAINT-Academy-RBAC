@@ -2666,9 +2666,29 @@ def admin_send_message(payload:TeacherMessageIn,user:User=Depends(require_roles(
     if payload.student_user_id is not None:
         student=db.scalar(select(User).where(User.id==payload.student_user_id,User.tenant_id==user.tenant_id,User.role=="Student"))
         if not student: raise HTTPException(400,"Invalid student context")
+        if recipient.role=="Student" and recipient.id!=student.id: raise HTTPException(409,"Student context must match the student recipient")
+        if recipient.role=="Parent / Guardian":
+            linked=db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.parent_user_id==recipient.id,ParentStudentLink.student_user_id==student.id))
+            if not linked: raise HTTPException(409,"Selected student is not linked to this parent or guardian")
     row=CommunicationMessage(tenant_id=user.tenant_id,sender_user_id=user.id,recipient_user_id=recipient.id,student_user_id=student.id if student else None,subject=payload.subject.strip(),body=payload.body.strip())
     db.add(row); audit(db,user,"MESSAGE_ADMIN","Communication",f"to={recipient.id};{row.subject}"); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status,"created_at":row.created_at}
+
+@app.put("/api/v1/admin/communication/{message_id}")
+def admin_update_message(message_id:int,payload:TeacherMessageIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(CommunicationMessage).where(CommunicationMessage.id==message_id,CommunicationMessage.tenant_id==user.tenant_id,CommunicationMessage.sender_user_id==user.id))
+    if not row: raise HTTPException(404,"Editable institution message not found")
+    recipient=db.scalar(select(User).where(User.id==payload.recipient_user_id,User.tenant_id==user.tenant_id,User.is_active==True))
+    if not recipient: raise HTTPException(404,"Recipient not found in this institution")
+    student=None
+    if payload.student_user_id is not None:
+        student=db.scalar(select(User).where(User.id==payload.student_user_id,User.tenant_id==user.tenant_id,User.role=="Student"))
+        if not student: raise HTTPException(400,"Invalid student context")
+        if recipient.role=="Student" and recipient.id!=student.id: raise HTTPException(409,"Student context must match the student recipient")
+        if recipient.role=="Parent / Guardian" and not db.scalar(select(ParentStudentLink.id).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.parent_user_id==recipient.id,ParentStudentLink.student_user_id==student.id)): raise HTTPException(409,"Selected student is not linked to this parent or guardian")
+    row.recipient_user_id=recipient.id; row.student_user_id=student.id if student else None; row.subject=payload.subject.strip(); row.body=payload.body.strip()
+    audit(db,user,"UPDATE","Communication",f"message={row.id};to={recipient.id}"); db.commit()
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/admin/exams-results")
 def admin_exams_results(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

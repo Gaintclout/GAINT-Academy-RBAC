@@ -2126,6 +2126,24 @@ def create_sos(
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
 
+@app.get("/api/v1/admin/academics-overview")
+def admin_academics_overview(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id).order_by(AcademicUnit.unit_type,AcademicUnit.name)).all()
+    assignments=db.scalars(select(AcademicAssignment).where(AcademicAssignment.tenant_id==user.tenant_id,AcademicAssignment.status=="Active")).all()
+    users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()
+    students={x.id:x for x in users if x.role=="Student"}
+    teachers={x.id:x for x in users if x.role=="Teacher"}
+    counts={}
+    for x in units: counts[x.unit_type]=counts.get(x.unit_type,0)+1
+    assigned_students=len({x.user_id for x in assignments if x.user_id in students})
+    assigned_teachers=len({x.user_id for x in assignments if x.user_id in teachers})
+    rows=[]
+    for unit in units:
+        linked=[x for x in assignments if x.unit_id==unit.id]
+        parent=db.get(AcademicUnit,unit.parent_id) if unit.parent_id else None
+        rows.append({"id":unit.id,"unit_type":unit.unit_type,"name":unit.name,"code":unit.code,"parent":parent.name if parent else "—","status":unit.status,"assignments":len(linked),"students":sum(x.user_id in students for x in linked),"teachers":sum(x.user_id in teachers for x in linked)})
+    return {"summary":{"units":len(units),"programs":counts.get("PROGRAM",0),"courses":counts.get("COURSE",0),"sections":counts.get("SECTION_BATCH",0),"assigned_students":assigned_students,"unassigned_students":max(0,len(students)-assigned_students),"assigned_teachers":assigned_teachers,"unassigned_teachers":max(0,len(teachers)-assigned_teachers)},"type_counts":counts,"units":rows}
+
 @app.get("/api/v1/admin/reports")
 def admin_reports(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     users=db.scalars(select(User).where(User.tenant_id==user.tenant_id)).all()

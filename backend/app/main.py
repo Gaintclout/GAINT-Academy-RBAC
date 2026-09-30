@@ -1220,7 +1220,7 @@ def parent_message_recipients(user:User=Depends(require_roles("Parent / Guardian
     result=[]; seen=set()
     for link in links:
         student=db.get(User,link.student_user_id)
-        if not student or student.tenant_id!=user.tenant_id: continue
+        if not student or student.tenant_id!=user.tenant_id or student.role!="Student" or not student.is_active: continue
         unit_ids=_assigned_unit_ids(db,student)
         for uid in unit_ids:
             assignments=db.scalars(select(AcademicAssignment).where(
@@ -1232,7 +1232,7 @@ def parent_message_recipients(user:User=Depends(require_roles("Parent / Guardian
             for assignment in assignments:
                 teacher=db.get(User,assignment.user_id)
                 key=(teacher.id if teacher else None,student.id)
-                if teacher and teacher.role=="Teacher" and teacher.is_active and key not in seen:
+                if teacher and teacher.tenant_id==user.tenant_id and teacher.role=="Teacher" and teacher.is_active and key not in seen:
                     seen.add(key); result.append({"user_id":teacher.id,"name":teacher.name,"student_user_id":student.id,"student_name":student.name})
     return result
 

@@ -3094,18 +3094,21 @@ def auditor_evidence(user:User=Depends(require_roles("Auditor")),db:Session=Depe
     documents=db.scalars(select(StaffDocument).where(StaffDocument.tenant_id==user.tenant_id).order_by(StaffDocument.id.desc())).all()
     for x in documents:
         staff=db.get(User,x.staff_user_id)
-        items.append({"id":f"STAFF_DOCUMENT-{x.id}","module":"HR","evidence_type":"Staff Document","reference":str(x.id),"title":x.title,"owner":staff.name if staff else f"Staff #{x.staff_user_id}","status":"AVAILABLE" if x.document_ref else "MISSING","source_status":x.status,"evidence_ref":x.document_ref or "","created_at":x.updated_at,"detail":f"{x.document_type} • {x.status}"})
+        if not staff or staff.tenant_id!=user.tenant_id: continue
+        items.append({"id":f"STAFF_DOCUMENT-{x.id}","module":"HR","evidence_type":"Staff Document","reference":str(x.id),"title":x.title,"owner":staff.name,"status":"AVAILABLE" if x.document_ref else "MISSING","source_status":x.status,"evidence_ref":x.document_ref or "","created_at":x.updated_at,"detail":f"{x.document_type} • {x.status}"})
     payments=db.scalars(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id).order_by(FeePayment.id.desc())).all()
     for x in payments:
         student=db.get(User,x.student_user_id)
-        items.append({"id":f"PAYMENT-{x.id}","module":"Finance","evidence_type":"Payment Receipt","reference":x.receipt_no,"title":f"Receipt {x.receipt_no}","owner":student.name if student else f"Student #{x.student_user_id}","status":"AVAILABLE","source_status":"RECORDED","evidence_ref":x.reference or x.receipt_no,"created_at":x.paid_at,"detail":f"Payment ledger #{x.ledger_id}"})
+        if not student or student.tenant_id!=user.tenant_id: continue
+        items.append({"id":f"PAYMENT-{x.id}","module":"Finance","evidence_type":"Payment Receipt","reference":x.receipt_no,"title":f"Receipt {x.receipt_no}","owner":student.name,"status":"AVAILABLE","source_status":"RECORDED","evidence_ref":x.reference or x.receipt_no,"created_at":x.paid_at,"detail":f"Payment ledger #{x.ledger_id}"})
     reconciliations=db.scalars(select(FinanceReconciliation).where(FinanceReconciliation.tenant_id==user.tenant_id).order_by(FinanceReconciliation.id.desc())).all()
     for x in reconciliations:
         items.append({"id":f"RECONCILIATION-{x.id}","module":"Finance","evidence_type":"Reconciliation","reference":x.reference or str(x.id),"title":f"Reconciliation {x.reconciliation_date.date().isoformat()}","owner":f"User #{x.recorded_by}","status":"AVAILABLE" if x.reference else "MISSING","source_status":x.status,"evidence_ref":x.reference or "","created_at":x.created_at,"detail":f"Difference: {x.difference}"})
     history=db.scalars(select(EnrollmentHistory).where(EnrollmentHistory.tenant_id==user.tenant_id).order_by(EnrollmentHistory.id.desc())).all()
     for x in history:
         student=db.get(User,x.student_user_id)
-        items.append({"id":f"ENROLLMENT-{x.id}","module":"Admissions","evidence_type":"Enrollment History","reference":str(x.id),"title":x.event_type.replace("_"," ").title(),"owner":student.name if student else f"Student #{x.student_user_id}","status":"AVAILABLE","source_status":"RECORDED","evidence_ref":f"enrollment_history:{x.id}","created_at":x.created_at,"detail":x.details or "Recorded enrollment lifecycle event"})
+        if not student or student.tenant_id!=user.tenant_id: continue
+        items.append({"id":f"ENROLLMENT-{x.id}","module":"Admissions","evidence_type":"Enrollment History","reference":str(x.id),"title":x.event_type.replace("_"," ").title(),"owner":student.name,"status":"AVAILABLE","source_status":"RECORDED","evidence_ref":f"enrollment_history:{x.id}","created_at":x.created_at,"detail":x.details or "Recorded enrollment lifecycle event"})
     audits=db.scalars(select(Audit).where(Audit.tenant_id==user.tenant_id).order_by(Audit.id.desc()).limit(100)).all()
     for x in audits:
         items.append({"id":f"AUDIT-{x.id}","module":"Audit","evidence_type":"Audit Event","reference":str(x.id),"title":f"{x.action} • {x.resource}","owner":x.actor,"status":"AVAILABLE","source_status":"RECORDED","evidence_ref":f"audit_event:{x.id}","created_at":x.created_at,"detail":x.details or "System audit event"})

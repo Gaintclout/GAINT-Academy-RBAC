@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
-from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn
+from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2125,6 +2125,54 @@ def create_sos(
     audit(db,user,"SOS_CREATE","sos",payload.message)
     db.commit(); db.refresh(event)
     return {"id":event.id,"status":event.status}
+
+@app.get("/api/v1/admin/hostels")
+def admin_hostels(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    hostels=db.scalars(select(Hostel).where(Hostel.tenant_id==user.tenant_id).order_by(Hostel.name)).all()
+    rooms=db.scalars(select(HostelRoom).where(HostelRoom.tenant_id==user.tenant_id).order_by(HostelRoom.room_number)).all()
+    allocations=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id).order_by(HostelAllocation.id.desc())).all()
+    active=[x for x in allocations if x.status=="ACTIVE" and x.check_out_at is None]
+    return {"summary":{"hostels":len(hostels),"rooms":len(rooms),"capacity":sum(x.capacity for x in rooms),"occupied":len(active),"available_beds":max(0,sum(x.capacity for x in rooms)-len(active))},"hostels":[{"id":x.id,"campus_id":x.campus_id,"name":x.name,"code":x.code,"hostel_type":x.hostel_type,"warden_name":x.warden_name,"warden_phone":x.warden_phone,"status":x.status} for x in hostels],"rooms":[{"id":x.id,"campus_id":x.campus_id,"hostel_id":x.hostel_id,"room_number":x.room_number,"floor":x.floor,"capacity":x.capacity,"room_type":x.room_type,"status":x.status,"occupied":sum(a.room_id==x.id for a in active)} for x in rooms]}
+
+@app.post("/api/v1/admin/hostels")
+def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=Hostel(tenant_id=user.tenant_id,campus_id=payload.campus_id,name=payload.name.strip(),code=payload.code.strip(),hostel_type=payload.hostel_type.strip().upper(),warden_name=payload.warden_name.strip(),warden_phone=payload.warden_phone.strip())
+    db.add(row); audit(db,user,"CREATE","Hostel",row.name); db.commit(); db.refresh(row)
+    return {"id":row.id,"name":row.name,"status":row.status}
+
+@app.post("/api/v1/admin/hostel-rooms")
+def admin_hostel_room_create(payload:HostelRoomIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    hostel=db.scalar(select(Hostel).where(Hostel.id==payload.hostel_id,Hostel.tenant_id==user.tenant_id))
+    if not hostel: raise HTTPException(404,"Hostel not found")
+    row=HostelRoom(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_number=payload.room_number.strip(),floor=payload.floor.strip(),capacity=payload.capacity,room_type=payload.room_type.strip().upper())
+    db.add(row); audit(db,user,"CREATE","Hostel Room",f"{hostel.name}:{row.room_number}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"room_number":row.room_number,"status":row.status}
+
+@app.post("/api/v1/admin/hostel-allocations")
+def admin_hostel_allocate(payload:HostelAllocationIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    hostel=db.scalar(select(Hostel).where(Hostel.id==payload.hostel_id,Hostel.tenant_id==user.tenant_id))
+    room=db.scalar(select(HostelRoom).where(HostelRoom.id==payload.room_id,HostelRoom.tenant_id==user.tenant_id,HostelRoom.hostel_id==payload.hostel_id))
+    student=db.scalar(select(User).where(User.id==payload.student_user_id,User.tenant_id==user.tenant_id,User.role=="Student"))
+    if not hostel or not room: raise HTTPException(404,"Hostel room not found")
+    if not student: raise HTTPException(404,"Student not found")
+    existing=db.scalar(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.student_user_id==student.id,HostelAllocation.status=="ACTIVE"))
+    if existing: raise HTTPException(409,"Student already has an active hostel allocation")
+    occupied=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.room_id==room.id,HostelAllocation.status=="ACTIVE")).all()
+    if len(occupied)>=room.capacity: raise HTTPException(409,"Room is at full capacity")
+    if payload.bed_number and any(x.bed_number==payload.bed_number for x in occupied): raise HTTPException(409,"Bed is already allocated")
+    row=HostelAllocation(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_id=room.id,student_user_id=student.id,bed_number=payload.bed_number.strip(),notes=payload.notes.strip(),allocated_by=user.id)
+    db.add(row); audit(db,user,"ALLOCATE","Hostel",f"student={student.id};room={room.room_number}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.patch("/api/v1/admin/hostel-allocations/{allocation_id}/checkout")
+def admin_hostel_checkout(allocation_id:int,payload:HostelCheckoutIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(HostelAllocation).where(HostelAllocation.id==allocation_id,HostelAllocation.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Hostel allocation not found")
+    if row.status!="ACTIVE": raise HTTPException(409,"Allocation is not active")
+    row.status="CHECKED_OUT"; row.check_out_at=dt.datetime.utcnow()
+    if payload.notes.strip(): row.notes=(row.notes+"\n"+payload.notes.strip()).strip()
+    audit(db,user,"CHECKOUT","Hostel",f"allocation={row.id};student={row.student_user_id}"); db.commit()
+    return {"id":row.id,"status":row.status,"check_out_at":row.check_out_at}
 
 @app.get("/api/v1/admin/library")
 def admin_library(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):

@@ -61,7 +61,7 @@ function StudentProfile({ user, ui }) {
     ["Name", profile.name || user?.name || "—"],
     ["Email", profile.email || user?.email || "—"],
     ["Status", profile.status || "—"],
-    ["Campus ID", profile.campus_id ?? "—"],
+    ["Campus", profile.campus_name || (profile.campus_id ? "Campus "+profile.campus_id : "—")],
     ["Institution", ui?.institutionName || "—"],
     ["Institution Type", ui?.label || "—"],
   ];
@@ -201,7 +201,7 @@ function StudentEvents() {
             <td>{event.organizer || "—"}</td>
             <td>{event.registration_status || "—"}</td>
             <td>{event.status || "—"}</td>
-          <td>{event.registration_required && event.registration_status==="Not Registered" ? <button type="button" onClick={()=>register(event.id)}>Register</button> : "—"}</td></tr>;
+          <td>{event.registration_required && event.registration_status==="Not Registered" && (!event.registration_deadline || new Date(event.registration_deadline)>=new Date()) ? <button type="button" onClick={()=>register(event.id)}>Register</button> : event.registration_required && event.registration_status==="Not Registered" ? "Closed" : "—"}</td></tr>;
         })}</tbody>
       </table>
     </div>

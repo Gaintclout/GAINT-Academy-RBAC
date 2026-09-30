@@ -1811,7 +1811,7 @@ def parent_children(
     result=[]
     for link in links:
         student=db.get(User,link.student_user_id)
-        if student:
+        if student and student.tenant_id==user.tenant_id and student.role=="Student" and student.is_active:
             result.append({
                 "id":student.id,"name":student.name,"email":student.email,
                 "relationship":link.relationship,

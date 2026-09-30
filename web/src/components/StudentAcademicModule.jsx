@@ -171,21 +171,22 @@ function StudentLibrary() {
 function StudentEvents() {
   const [events, setEvents] = useState(null);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const loadEvents = () => api.get("/api/v1/student/events")
-      .then((response) => { setEvents(response.data || []); setError(""); })
-      .catch((e) => setError(e?.response?.data?.detail || "Unable to load events."));
+      .then((response) => { setEvents(response.data || []); setLoadError(""); })
+      .catch((e) => setLoadError(e?.response?.data?.detail || "Unable to load events."));
   useEffect(() => {
     loadEvents();
   }, []);
-  async function register(id){try{await api.post("/api/v1/student/events/"+id+"/register");setMessage("Event registration completed.");loadEvents()}catch(e){setError(e?.response?.data?.detail||"Unable to register for event.")}}
+  async function register(id){try{setActionError("");await api.post("/api/v1/student/events/"+id+"/register");setMessage("Event registration completed.");loadEvents()}catch(e){setMessage("");setActionError(e?.response?.data?.detail||"Unable to register for event.")}}
 
-  if (error) return <div className="error">{error}</div>;
+  if (loadError && !events) return <div className="error">{loadError}</div>;
   if (!events) return <section className="panel">Loading events...</section>;
   if (!events.length) return <EmptyTable columns={MODULES.Events.columns} message={MODULES.Events.empty} />;
 
-  return <>{message&&<div className="success">{message}</div>}<section className="panel structure-table">
+  return <>{loadError&&<div className="error">{loadError}</div>}{actionError&&<div className="error">{actionError}</div>}{message&&<div className="success">{message}</div>}<section className="panel structure-table">
     <div className="panel-title"><b>Student Events</b><span>{events.length}</span></div>
     <div className="table-scroll">
       <table>

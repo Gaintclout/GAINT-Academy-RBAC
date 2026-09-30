@@ -2182,21 +2182,14 @@ def parent_child_location(
     user:User=Depends(require_roles("Parent / Guardian")),
     db:Session=Depends(get_db),
 ):
-    link=db.scalar(select(ParentStudentLink).where(
-        ParentStudentLink.parent_user_id==user.id,
-        ParentStudentLink.student_user_id==student_id,
-        ParentStudentLink.tenant_id==user.tenant_id,
-    ))
-    if not link:
-        raise HTTPException(403,"This student is not linked to your account")
-    student=db.get(User,student_id)
-    row=_latest_location(db,student_id,user.tenant_id)
-    audit(db,user,"LOCATION_VIEW",f"student:{student_id}","parent_link_verified")
+    student=_linked_child(db,user,student_id)
+    row=_latest_location(db,student.id,user.tenant_id)
+    audit(db,user,"LOCATION_VIEW",f"student:{student.id}","parent_link_verified")
     db.commit()
     if not row:
-        return {"available":False,"student_id":student_id,"name":student.name if student else "Student"}
+        return {"available":False,"student_id":student.id,"name":student.name}
     return {
-        "available":True,"student_id":student_id,"name":student.name if student else "Student",
+        "available":True,"student_id":student.id,"name":student.name,
         "latitude":row.latitude,"longitude":row.longitude,"accuracy":row.accuracy,
         "source":row.source,"tracking_context":row.tracking_context,"status":row.status,
         "recorded_at":row.recorded_at,

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, SubmissionIn, GradeIn, ClassSessionIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStatusUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2426,6 +2426,23 @@ def admin_event_create(payload:CampusEventIn,user:User=Depends(require_roles("In
     if deadline and deadline>starts: raise HTTPException(400,"Registration deadline must be before event start")
     row=AcademyEvent(tenant_id=user.tenant_id,campus_id=user.campus_id,title=payload.title,event_type=payload.event_type,venue=payload.venue,starts_at=starts,ends_at=ends,organizer_user_id=user.id,audience_role=payload.audience_role,registration_required=payload.registration_required,registration_deadline=deadline,status="Published")
     db.add(row); audit(db,user,"EVENT_CREATE","institution_event",payload.title); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.put("/api/v1/admin/events/{event_id}")
+def admin_event_update(event_id:int,payload:AdminEventUpdateIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
+    row=db.scalar(select(AcademyEvent).where(AcademyEvent.id==event_id,AcademyEvent.tenant_id==user.tenant_id))
+    if not row: raise HTTPException(404,"Event not found")
+    try:
+        starts=dt.datetime.fromisoformat(payload.starts_at); ends=dt.datetime.fromisoformat(payload.ends_at)
+        deadline=dt.datetime.fromisoformat(payload.registration_deadline) if payload.registration_deadline else None
+    except ValueError: raise HTTPException(400,"Invalid event date/time")
+    if ends<=starts: raise HTTPException(400,"Event end must be after start")
+    if deadline and deadline>starts: raise HTTPException(400,"Registration deadline must be before event start")
+    if payload.audience_role not in {"ALL","Student","Teacher","Parent","Parent / Guardian"}: raise HTTPException(400,"Invalid audience role")
+    status=payload.status.strip().title()
+    if status not in {"Published","Draft","Cancelled","Completed"}: raise HTTPException(400,"Invalid event status")
+    row.title=payload.title.strip(); row.event_type=payload.event_type.strip(); row.venue=payload.venue.strip(); row.starts_at=starts; row.ends_at=ends; row.audience_role=payload.audience_role; row.registration_required=payload.registration_required; row.registration_deadline=deadline; row.status=status
+    audit(db,user,"EVENT_UPDATE","institution_event",f"{row.id}:{row.title}:{status}"); db.commit()
     return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/admin/lms-overview")

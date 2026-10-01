@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from "react"; import {api} from "../api";
 const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
-export default function AccountsFinance({title,ui}){\n const terms=ui.label==="School"?{fee:"School Fee",fees:"School Fees",student:"Student",report:"School Fee Report"}:ui.label==="College"?{fee:"Semester Fee",fees:"Semester Fees",student:"Student",report:"College Finance Report"}:{fee:"Student Charge",fees:"Student Charges",student:"Student",report:"University Finance Report"};
+export default function AccountsFinance({title,ui}){
+ const terms=ui.label==="School"?{fee:"School Fee",fees:"School Fees",student:"Student",report:"School Fee Report"}:ui.label==="College"?{fee:"Semester Fee",fees:"Semester Fees",student:"Student",report:"College Finance Report"}:{fee:"Student Charge",fees:"Student Charges",student:"Student",report:"University Finance Report"};
  const [rows,setRows]=useState([]),[receipts,setReceipts]=useState([]),[students,setStudents]=useState([]),[payments,setPayments]=useState([]),[summary,setSummary]=useState(null),[report,setReport]=useState(null),[dates,setDates]=useState({start:"",end:""}),[studentSearch,setStudentSearch]=useState(""),[err,setErr]=useState(""),[msg,setMsg]=useState("");
  const [fee,setFee]=useState({student_user_id:"",fee_code:"",title:"",amount_due:"",due_at:""});
  const [payment,setPayment]=useState({ledger_id:"",amount:"",reference:""});

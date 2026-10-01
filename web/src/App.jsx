@@ -18,7 +18,7 @@ export default function App(){
 
   if(loading) return <div className="center">Loading GAINT Academy...</div>;
   if(!user) return <Login onLogin={setUser}/>;
-  return <Shell user={user} onLogout={()=>{
+  return <Shell user={user} onUserChange={setUser} onLogout={()=>{
     localStorage.removeItem("gaint_token");
     setUser(null);
   }}/>;

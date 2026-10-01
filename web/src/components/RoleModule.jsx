@@ -1,61 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
-const DEMO = {
-  Attendance: [
-    ["23 Sep 2026", "Present", "Daily", "Present"],
-    ["22 Sep 2026", "Present", "Daily", "Present"],
-    ["21 Sep 2026", "Absent", "Daily", "Absent"],
-  ],
-  Homework: [
-    ["Algebra Exercise – Chapter 4", "MAT-104", "Mathematics", "Pending"],
-    ["Chapter 6 Worksheet", "SCI-206", "Science", "Submitted"],
-  ],
-  Results: [
-    ["Mathematics", "92/100", "Semester I", "A+"],
-    ["Science", "88/100", "Semester I", "A"],
-  ],
-  Fees: [
-    ["Term I Fee", "₹25,000", "Tuition", "Paid"],
-    ["Transport Fee", "₹6,000", "Transport", "Paid"],
-  ],
-  Transport: [["Route A1", "GAINT BUS 12", "Pickup 08:00", "Active"]],
-  "My Children": [["Demo Student", "STU-1001", "Class 10-A", "Active"]],
-  "My Classes": [
-    ["Class 10-A Mathematics", "10A-MAT", "Period 2", "Today"],
-    ["Class 9-B Mathematics", "9B-MAT", "Period 5", "Today"],
-  ],
-  "My Students": [
-    ["Aarav Sharma", "STU-1001", "10-A", "Active"],
-    ["Diya Reddy", "STU-1002", "10-A", "Active"],
-  ],
-  Payments: [["PAY-2026-901", "₹12,500", "UPI", "Success"]],
-  Receipts: [["RCPT-2026-901", "₹12,500", "Tuition", "Issued"]],
-  Refunds: [["RF-2026-04", "₹2,000", "Duplicate Payment", "Pending"]],
-  Staff: [
-    ["Ananya Rao", "EMP-101", "Teacher", "Active"],
-    ["Rahul Verma", "EMP-102", "Administration", "Active"],
-  ],
-  Visitors: [["Ramesh Kumar", "VIS-902", "Parent Meeting", "Checked In"]],
-  Inventory: [["Projectors", "INV-PRJ", "AV Equipment", "42 Available"]],
-  Assets: [["Computer Lab", "AST-LAB-01", "IT", "Operational"]],
-  Compliance: [["Fee Reconciliation Review", "CMP-09", "Finance", "In Review"]],
-  "Exception Reports": [["Unusual Fee Adjustment", "EX-14", "Finance", "Open"]],
-  Evidence: [["September Audit Evidence", "EVD-SEP", "Audit", "Available"]],
-};
-
-function demoRows(title) {
-  return (DEMO[title] || []).map((item, index) => ({
-    id: `demo-${index}`,
-    name: item[0],
-    code: item[1],
-    category: item[2],
-    status: item[3],
-    notes: "",
-    isDemo: true,
-  }));
-}
-
 function csvEscape(value) {
   const text = String(value ?? "");
   return `"${text.replaceAll('"', '""')}"`;
@@ -105,14 +50,6 @@ export default function RoleModule({ title, user }) {
   };
 
   async function fetchRows(accessData) {
-    const perms = new Set(accessData?.permissions || []);
-    const mutatingPage = perms.has("create") || perms.has("update") || perms.has("delete");
-
-    if (!mutatingPage && DEMO[title]) {
-      setRows(demoRows(title));
-      return;
-    }
-
     const response = await api.get("/api/v1/records", {
       params: { module: title },
     });

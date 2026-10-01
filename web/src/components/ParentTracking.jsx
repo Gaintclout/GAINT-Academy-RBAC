@@ -367,50 +367,6 @@ export default function ParentTracking() {
 
                 <div>
                   <small>
-                    Route
-                  </small>
-
-                  <strong>
-                    {
-                      loc.bus
-                        ?.route ||
-                      "—"
-                    }
-                  </strong>
-                </div>
-
-
-                <div>
-                  <small>
-                    Vehicle
-                  </small>
-
-                  <strong>
-                    {
-                      loc.bus
-                        ?.vehicle ||
-                      "—"
-                    }
-                  </strong>
-                </div>
-
-
-                <div>
-                  <small>
-                    ETA
-                  </small>
-
-                  <strong>
-                    {loc.bus
-                      ?.eta_minutes
-                      ? `${loc.bus.eta_minutes} min`
-                      : "—"}
-                  </strong>
-                </div>
-
-
-                <div>
-                  <small>
                     GPS Accuracy
                   </small>
 

@@ -1,0 +1,8 @@
+import React,{useEffect,useState} from "react"; import {api} from "../api";
+export default function ParentDashboard({ui}){
+ const [data,setData]=useState(null),[err,setErr]=useState("");
+ useEffect(()=>{api.get("/api/v1/parents/dashboard").then(r=>{setData(r.data);setErr("")}).catch(e=>setErr(e?.response?.data?.detail||"Unable to load parent dashboard."))},[]);
+ const money=n=>"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+ const children=data?.children||[];
+ return <div><section className="role-hero"><div><span className="eyebrow">{ui.label} • Parent / Guardian</span><h1>Parent Dashboard</h1><p>Live overview of students officially linked to your account.</p></div><div className="hero-badge">{ui.label}</div></section>{err&&<div className="error">{err}</div>}<div className="module-kpis"><article><small>Linked Children</small><strong>{data?.linked_children??0}</strong></article><article><small>Total Fee Balance</small><strong>{money(data?.total_fee_balance)}</strong></article></div><section className="panel structure-table"><div className="panel-title"><b>Children Overview</b><span>{children.length}</span></div><div className="table-scroll"><table><thead><tr><th>Student</th><th>Relationship</th><th>Attendance</th><th>Fee Balance</th></tr></thead><tbody>{children.length?children.map(x=><tr key={x.id}><td><b>{x.name}</b><br/><small>{x.email}</small></td><td>{x.relationship}</td><td>{x.attendance_percentage==null?"—":x.attendance_percentage+"%"}</td><td>{money(x.fee_balance)}</td></tr>):<tr><td colSpan="4" className="empty-cell">No students are linked to this parent account.</td></tr>}</tbody></table></div></section></div>
+}

@@ -2541,8 +2541,7 @@ def admin_hostel_checkout(allocation_id:int,payload:HostelCheckoutIn,user:User=D
     if not row: raise HTTPException(404,"Hostel allocation not found")
     if row.status!="ACTIVE": raise HTTPException(409,"Allocation is not active")
     row.status="CHECKED_OUT"; row.check_out_at=dt.datetime.utcnow()
-    if payload.notes.strip(): row.notes=(row.notes+"
-"+payload.notes.strip()).strip()
+    if payload.notes.strip(): row.notes=((row.notes or "") + chr(10) + payload.notes.strip()).strip()
     audit(db,user,"CHECKOUT","Hostel",f"allocation={row.id};student={row.student_user_id}"); db.commit()
     return {"id":row.id,"status":row.status,"check_out_at":row.check_out_at}
 

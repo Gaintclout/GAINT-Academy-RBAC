@@ -148,3 +148,16 @@ def test_accounts_read_and_write_rbac_boundaries():
         assert client.get(path,headers=student).status_code==403
     i=ids()
     assert create_fee(student,i["student1@test.local"],"BLOCKED",10).status_code==403
+
+
+def test_accounts_cross_tenant_finance_mutations_are_blocked():
+    i=ids(); h=auth("accounts1@test.local")
+    cross=create_fee(h,i["student2@test.local"],"CROSS-TENANT",100)
+    assert cross.status_code==400
+    with SessionLocal() as db:
+        from app.models import FeeLedger,FeePayment
+        other=FeeLedger(tenant_id=2,student_user_id=i["student2@test.local"],fee_code="OTHER",title="Other Tenant Fee",amount_due=100,amount_paid=0,status="DUE")
+        db.add(other); db.commit(); db.refresh(other)
+        other_id=other.id
+    assert client.post("/api/v1/finance/concessions",headers=h,json={"ledger_id":other_id,"amount":10,"reason":"Blocked"}).status_code==404
+    assert client.post(f"/api/v1/fee-ledger/{other_id}/payments",headers=h,json={"amount":10,"reference":"CROSS-PAY"}).status_code==404

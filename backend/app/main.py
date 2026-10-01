@@ -2474,7 +2474,7 @@ def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Instit
     if not campus_exists: raise HTTPException(404,"Campus not found in this institution")
     duplicate=db.scalar(select(Hostel.id).where(Hostel.tenant_id==user.tenant_id,Hostel.campus_id==payload.campus_id,Hostel.code==payload.code.strip()))
     if duplicate: raise HTTPException(409,"Hostel code already exists for this campus")
-    row=Hostel(tenant_id=user.tenant_id,campus_id=payload.campus_id,name=payload.name.strip(),code=payload.code.strip(),hostel_type=payload.hostel_type.strip().upper(),warden_name=payload.warden_name.strip(),warden_phone=payload.warden_phone.strip())
+    row=Hostel(tenant_id=user.tenant_id,campus_id=payload.campus_id,name=payload.name.strip(),code=code,hostel_type=payload.hostel_type.strip().upper(),warden_name=payload.warden_name.strip(),warden_phone=payload.warden_phone.strip())
     db.add(row); audit(db,user,"CREATE","Hostel",row.name); db.commit(); db.refresh(row)
     return {"id":row.id,"name":row.name,"status":row.status}
 
@@ -2529,7 +2529,7 @@ def admin_hostel_allocate(payload:HostelAllocationIn,user:User=Depends(require_r
     occupied=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.room_id==room.id,HostelAllocation.status=="ACTIVE")).all()
     if len(occupied)>=room.capacity: raise HTTPException(409,"Room is at full capacity")
     if payload.bed_number and any(x.bed_number==payload.bed_number for x in occupied): raise HTTPException(409,"Bed is already allocated")
-    row=HostelAllocation(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_id=room.id,student_user_id=student.id,bed_number=payload.bed_number.strip(),notes=payload.notes.strip(),allocated_by=user.id)
+    row=HostelAllocation(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_id=room.id,student_user_id=student.id,bed_number=bed_number,notes=payload.notes.strip(),allocated_by=user.id)
     db.add(row); audit(db,user,"ALLOCATE","Hostel",f"student={student.id};room={room.room_number}"); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
 

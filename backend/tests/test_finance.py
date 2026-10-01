@@ -161,3 +161,23 @@ def test_accounts_cross_tenant_finance_mutations_are_blocked():
         other_id=other.id
     assert client.post("/api/v1/finance/concessions",headers=h,json={"ledger_id":other_id,"amount":10,"reason":"Blocked"}).status_code==404
     assert client.post(f"/api/v1/fee-ledger/{other_id}/payments",headers=h,json={"amount":10,"reference":"CROSS-PAY"}).status_code==404
+
+
+def test_accounts_finance_reads_do_not_leak_other_tenant_data():
+    i=ids(); h=auth("accounts1@test.local")
+    own=create_fee(h,i["student1@test.local"],"OWN-LEDGER",80).json()
+    client.post(f"/api/v1/fee-ledger/{own['id']}/payments",headers=h,json={"amount":20,"reference":"OWN-PAY"})
+    with SessionLocal() as db:
+        from app.models import FeeLedger,FeePayment
+        other=FeeLedger(tenant_id=2,student_user_id=i["student2@test.local"],fee_code="SECRET",title="Other Tenant Fee",amount_due=999,amount_paid=999,status="PAID")
+        db.add(other); db.flush()
+        db.add(FeePayment(tenant_id=2,ledger_id=other.id,student_user_id=i["student2@test.local"],amount=999,reference="SECRET-PAY",receipt_no="SECRET-RECEIPT",recorded_by=i["student2@test.local"]))
+        db.commit()
+    ledger=client.get("/api/v1/fee-ledger",headers=h); assert ledger.status_code==200
+    assert all(x["fee_code"]!="SECRET" for x in ledger.json())
+    payments=client.get("/api/v1/finance/payments",headers=h); assert payments.status_code==200
+    assert all(x["reference"]!="SECRET-PAY" for x in payments.json())
+    report=client.get("/api/v1/finance/report",headers=h); assert report.status_code==200
+    assert all(x["reference"]!="SECRET-PAY" for x in report.json()["payments"])
+    summary=client.get("/api/v1/finance/summary",headers=h); assert summary.status_code==200
+    assert summary.json()["collected"]==20.0

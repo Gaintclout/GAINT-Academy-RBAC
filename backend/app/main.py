@@ -2529,8 +2529,7 @@ def admin_hostel_allocate(payload:HostelAllocationIn,user:User=Depends(require_r
     if existing: raise HTTPException(409,"Student already has an active hostel allocation")
     occupied=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.room_id==room.id,HostelAllocation.status=="ACTIVE")).all()
     if len(occupied)>=room.capacity: raise HTTPException(409,"Room is at full capacity")
-    if payload.bed_number and any(x.bed_number==payload.bed_number for x in occupied): raise HTTPException(409,"Bed is already allocated")
-    row=HostelAllocation(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_id=room.id,student_user_id=student.id,bed_number=bed_number,notes=payload.notes.strip(),allocated_by=user.id)
+    bed_number=payload.bed_number.strip().upper()\n    if bed_number and any((x.bed_number or "").strip().upper()==bed_number for x in occupied): raise HTTPException(409,"Bed is already allocated")\n    row=HostelAllocation(tenant_id=user.tenant_id,campus_id=hostel.campus_id,hostel_id=hostel.id,room_id=room.id,student_user_id=student.id,bed_number=bed_number,notes=payload.notes.strip(),allocated_by=user.id)
     db.add(row); audit(db,user,"ALLOCATE","Hostel",f"student={student.id};room={room.room_number}"); db.commit(); db.refresh(row)
     return {"id":row.id,"status":row.status}
 

@@ -18,7 +18,7 @@ def upgrade():
         ("shelf_location",sa.String(80),"")]:
         op.add_column("library_books",sa.Column(name,typ,nullable=False,server_default=default))
     op.add_column("library_books",sa.Column("publication_year",sa.Integer(),nullable=True))
-    op.add_column("library_books",sa.Column("academic_unit_id",sa.Integer(),sa.ForeignKey("academic_units.id"),nullable=True))
+    with op.batch_alter_table("library_books") as batch_op:\n        batch_op.add_column(sa.Column("academic_unit_id",sa.Integer(),nullable=True))\n        batch_op.create_foreign_key("fk_library_books_academic_unit_id","academic_units",["academic_unit_id"],["id"])
     op.create_index("ix_library_books_academic_unit_id","library_books",["academic_unit_id"])
     op.add_column("library_loans",sa.Column("fine_per_day",sa.Numeric(12,2),nullable=False,server_default="0"))
     op.add_column("library_loans",sa.Column("return_condition",sa.String(30),nullable=False,server_default=""))

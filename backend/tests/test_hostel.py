@@ -14,7 +14,8 @@ client=TestClient(app); PASSWORD="Test@123"
 def reset_db():
     Base.metadata.drop_all(bind=engine); Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
-        db.add(Institution(id=1,name="Hostel School",institution_type="SCHOOL",code="HST")); db.flush()\n        db.add(AcademicUnit(id=1,tenant_id=1,campus_id=1,unit_type="CAMPUS",name="Main Campus",code="MAIN",status="Active")); db.flush()
+        db.add(Institution(id=1,name="Hostel School",institution_type="SCHOOL",code="HST")); db.flush()
+        db.add(AcademicUnit(id=1,tenant_id=1,campus_id=1,unit_type="CAMPUS",name="Main Campus",code="MAIN",status="Active")); db.flush()
         db.add_all([
             User(id=1,email="admin@hst.local",name="Admin",role="Institution Admin",password_hash=hash_password(PASSWORD),tenant_id=1,campus_id=1,is_active=True),
             User(id=2,email="student@hst.local",name="Student",role="Student",password_hash=hash_password(PASSWORD),tenant_id=1,campus_id=1,is_active=True),

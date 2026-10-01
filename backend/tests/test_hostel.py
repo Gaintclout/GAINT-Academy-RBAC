@@ -63,3 +63,22 @@ def test_checkout_moves_student_to_history():
     r=client.patch(f"/api/v1/admin/hostel-allocations/{allocation['id']}/checkout",headers=admin,json={"notes":"Completed"}); assert r.status_code==200,r.text
     me=client.get("/api/v1/accommodation/me",headers=auth("student@hst.local")); assert me.status_code==200
     assert me.json()["current"] is None; assert me.json()["history"][0]["status"]!="ACTIVE"
+
+
+def test_checkout_allows_reallocation_and_normalizes_bed():
+    admin=auth("admin@hst.local"); hostel,_,allocation=create_allocation(admin)
+    out=client.patch(f"/api/v1/admin/hostel-allocations/{allocation['id']}/checkout",headers=admin,json={"notes":"Move room"}); assert out.status_code==200,out.text
+    r=client.post("/api/v1/admin/hostel-rooms",headers=admin,json={"hostel_id":hostel["id"],"room_number":"102","floor":"1","capacity":2,"room_type":"STANDARD"}); assert r.status_code==200,r.text
+    room=r.json()
+    a=client.post("/api/v1/admin/hostel-allocations",headers=admin,json={"hostel_id":hostel["id"],"room_id":room["id"],"student_user_id":2,"bed_number":" b2 ","notes":"Reallocated"}); assert a.status_code==200,a.text
+    me=client.get("/api/v1/accommodation/me",headers=auth("student@hst.local")); assert me.status_code==200
+    assert me.json()["current"]["room_number"]=="102"
+    assert me.json()["current"]["bed_number"]=="B2"
+    assert len(me.json()["history"])==1
+
+def test_hostel_code_is_normalized_and_duplicate_is_blocked():
+    admin=auth("admin@hst.local")
+    payload={"campus_id":1,"name":"North House","code":" nh ","hostel_type":"GENERAL","warden_name":"Warden","warden_phone":"9999999999"}
+    first=client.post("/api/v1/admin/hostels",headers=admin,json=payload); assert first.status_code==200,first.text
+    second=client.post("/api/v1/admin/hostels",headers=admin,json={**payload,"name":"Duplicate","code":"NH"})
+    assert second.status_code==409,second.text

@@ -14,11 +14,11 @@ ROLE_MENUS = {
     "Student": [
         "Dashboard", "My Profile", "Timetable", "Attendance", "Courses",
         "Homework", "Assignments", "Exams", "Results", "Fees", "Transport",
-        "Library", "Events", "Grievance", "Leave Request", "My Safety",
+        "Library", "Accommodation", "Events", "Grievance", "Leave Request", "My Safety",
     ],
     "Parent / Guardian": [
         "Dashboard", "My Children", "Attendance", "Homework", "Results", "Fees",
-        "Transport", "Live Location", "Messages", "Events", "Grievance",
+        "Transport", "Live Location", "Accommodation", "Messages", "Events", "Grievance",
         "Leave Request",
     ],
     "Accounts": [
@@ -91,6 +91,7 @@ PAGE_POLICY = {
         "Fees": {"view", "pay"},
         "Transport": {"view"},
         "Library": {"view"},
+        "Accommodation": {"view"},
         "Events": {"view"},
         "Grievance": {"view", "create_grievance"},
         "Leave Request": {"view", "request_leave"},
@@ -104,6 +105,7 @@ PAGE_POLICY = {
         "Fees": {"view", "pay"},
         "Transport": {"view"},
         "Live Location": {"view", "track"},
+        "Accommodation": {"view"},
         "Messages": {"view", "message"},
         "Events": {"view"},
         "Grievance": {"view", "create_grievance"},

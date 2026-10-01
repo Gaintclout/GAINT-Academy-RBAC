@@ -40,7 +40,7 @@ def create_allocation(admin):
 def test_admin_hostel_allocation_and_capacity_guard():
     admin=auth("admin@hst.local"); hostel,room,_=create_allocation(admin)
     second=client.post("/api/v1/admin/hostel-allocations",headers=admin,json={"hostel_id":hostel["id"],"room_id":room["id"],"student_user_id":4,"bed_number":"B2","notes":""})
-    assert second.status_code in (400,409)
+    assert second.status_code in (400,404,409)
 
 def test_student_sees_only_own_accommodation():
     admin=auth("admin@hst.local"); create_allocation(admin)

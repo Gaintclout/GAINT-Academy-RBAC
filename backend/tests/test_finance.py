@@ -181,3 +181,19 @@ def test_accounts_finance_reads_do_not_leak_other_tenant_data():
     assert all(x["reference"]!="SECRET-PAY" for x in report.json()["payments"])
     summary=client.get("/api/v1/finance/summary",headers=h); assert summary.status_code==200
     assert summary.json()["collected"]==20.0
+
+
+def test_accounts_cannot_mutate_cancelled_or_foreign_finance_records():
+    i=ids(); h=auth("accounts1@test.local")
+    fee=create_fee(h,i["student1@test.local"],"LOCKED",75).json()
+    assert client.post(f"/api/v1/fee-ledger/{fee['id']}/cancel",headers=h).status_code==200
+    assert client.post("/api/v1/finance/concessions",headers=h,json={"ledger_id":fee["id"],"amount":5,"reason":"Blocked"}).status_code==409
+    assert client.post(f"/api/v1/fee-ledger/{fee['id']}/payments",headers=h,json={"amount":5,"reference":"LOCKED-PAY"}).status_code==409
+    with SessionLocal() as db:
+        from app.models import FeeLedger,FeePayment
+        other=FeeLedger(tenant_id=2,student_user_id=i["student2@test.local"],fee_code="FOREIGN",title="Foreign Fee",amount_due=50,amount_paid=50,status="PAID")
+        db.add(other); db.flush()
+        payment=FeePayment(tenant_id=2,ledger_id=other.id,student_user_id=i["student2@test.local"],amount=50,reference="FOREIGN-PAY",receipt_no="FOREIGN-R",recorded_by=i["student2@test.local"])
+        db.add(payment); db.commit(); db.refresh(payment)
+        payment_id=payment.id
+    assert client.post("/api/v1/finance/refunds",headers=h,json={"payment_id":payment_id,"amount":5,"reason":"Blocked","reference":"FOREIGN-REF"}).status_code==404

@@ -85,6 +85,7 @@ import AdminTransport from "./AdminTransport";
 import AdminLibrary from "./AdminLibrary";
 import MyLibrary from "./MyLibrary";
 import AdminHostel from "./AdminHostel";
+import Accommodation from "./Accommodation";
 import AdminInventoryAssets from "./AdminInventoryAssets";
 import AdminVisitors from "./AdminVisitors";
 import AdminHealth from "./AdminHealth";
@@ -218,6 +219,8 @@ export default function Shell({ user, onLogout, onUserChange }) {
     content = <AccountsConcessions ui={ui} />;
   } else if (user.role === "Accounts" && ["Fees","Payments","Receipts","Finance Reports"].includes(active)) {
     content = <AccountsFinance title={active} ui={ui} />;
+  } else if ((user.role === "Student" || user.role === "Parent / Guardian") && active === "Accommodation") {
+    content = <Accommodation user={user} ui={ui} />;
   } else if ((user.role === "Student" || user.role === "Teacher") && active === "Library") {
     content = <MyLibrary ui={ui} />;
   } else if (user.role === "Student" && active === "Fees") {

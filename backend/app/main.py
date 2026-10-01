@@ -2470,9 +2470,10 @@ def admin_hostels(user:User=Depends(require_roles("Institution Admin")),db:Sessi
 
 @app.post("/api/v1/admin/hostels")
 def admin_hostel_create(payload:HostelIn,user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
-    campus_exists=db.scalar(select(User.id).where(User.tenant_id==user.tenant_id,User.campus_id==payload.campus_id).limit(1))
-    if not campus_exists: raise HTTPException(404,"Campus not found in this institution")
-    duplicate=db.scalar(select(Hostel.id).where(Hostel.tenant_id==user.tenant_id,Hostel.campus_id==payload.campus_id,Hostel.code==payload.code.strip()))
+    campus_exists=db.scalar(select(AcademicUnit.id).where(AcademicUnit.id==payload.campus_id,AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.unit_type=="CAMPUS",AcademicUnit.status=="Active"))
+    if not campus_exists: raise HTTPException(404,"Active campus not found in this institution")
+    code=payload.code.strip().upper()
+    duplicate=db.scalar(select(Hostel.id).where(Hostel.tenant_id==user.tenant_id,Hostel.campus_id==payload.campus_id,Hostel.code==code))
     if duplicate: raise HTTPException(409,"Hostel code already exists for this campus")
     row=Hostel(tenant_id=user.tenant_id,campus_id=payload.campus_id,name=payload.name.strip(),code=code,hostel_type=payload.hostel_type.strip().upper(),warden_name=payload.warden_name.strip(),warden_phone=payload.warden_phone.strip())
     db.add(row); audit(db,user,"CREATE","Hostel",row.name); db.commit(); db.refresh(row)

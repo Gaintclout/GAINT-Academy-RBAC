@@ -14,13 +14,14 @@ client=TestClient(app); PASSWORD="Test@123"
 def reset_db():
     Base.metadata.drop_all(bind=engine); Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
-        db.add(Institution(id=1,name="Hostel School",institution_type="SCHOOL",code="HST")); db.flush()
-        db.add(AcademicUnit(id=1,tenant_id=1,campus_id=1,unit_type="CAMPUS",name="Main Campus",code="MAIN",status="Active")); db.flush()
+        db.add_all([Institution(id=1,name="Hostel School",institution_type="SCHOOL",code="HST"),Institution(id=2,name="Other School",institution_type="SCHOOL",code="OTH")]); db.flush()
+        db.add_all([AcademicUnit(id=1,tenant_id=1,campus_id=1,unit_type="CAMPUS",name="Main Campus",code="MAIN",status="Active"),AcademicUnit(id=2,tenant_id=2,campus_id=2,unit_type="CAMPUS",name="Other Campus",code="OTHER",status="Active")]); db.flush()
         db.add_all([
             User(id=1,email="admin@hst.local",name="Admin",role="Institution Admin",password_hash=hash_password(PASSWORD),tenant_id=1,campus_id=1,is_active=True),
             User(id=2,email="student@hst.local",name="Student",role="Student",password_hash=hash_password(PASSWORD),tenant_id=1,campus_id=1,is_active=True),
             User(id=3,email="parent@hst.local",name="Parent",role="Parent / Guardian",password_hash=hash_password(PASSWORD),tenant_id=1,campus_id=1,is_active=True),
             User(id=4,email="teacher@hst.local",name="Teacher",role="Teacher",password_hash=hash_password(PASSWORD),tenant_id=1,campus_id=1,is_active=True),
+            User(id=5,email="admin@other.local",name="Other Admin",role="Institution Admin",password_hash=hash_password(PASSWORD),tenant_id=2,campus_id=2,is_active=True),
         ]); db.flush()
         db.add(ParentStudentLink(parent_user_id=3,student_user_id=2,relationship="Mother",tenant_id=1)); db.commit()
     yield
@@ -82,3 +83,14 @@ def test_hostel_code_is_normalized_and_duplicate_is_blocked():
     first=client.post("/api/v1/admin/hostels",headers=admin,json=payload); assert first.status_code==200,first.text
     second=client.post("/api/v1/admin/hostels",headers=admin,json={**payload,"name":"Duplicate","code":"NH"})
     assert second.status_code==409,second.text
+
+
+def test_admin_cannot_create_hostel_in_another_tenant_campus():
+    r=client.post("/api/v1/admin/hostels",headers=auth("admin@hst.local"),json={"campus_id":2,"name":"Wrong Campus","code":"WC","hostel_type":"GENERAL","warden_name":"","warden_phone":""})
+    assert r.status_code==404,r.text
+
+def test_other_tenant_admin_cannot_see_first_tenant_hostel():
+    create_allocation(auth("admin@hst.local"))
+    r=client.get("/api/v1/admin/hostels",headers=auth("admin@other.local")); assert r.status_code==200,r.text
+    assert r.json()["hostels"]==[]
+    assert r.json()["allocations"]==[]

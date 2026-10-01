@@ -2435,6 +2435,28 @@ def admin_asset_delete(asset_id:int,user:User=Depends(require_roles("Institution
     if not row: raise HTTPException(404,"Asset not found")
     audit(db,user,"ASSET_DELETE_ADMIN","campus_asset",f"{row.id}:{row.asset_code}"); db.delete(row); db.commit(); return {"ok":True}
 
+@app.get("/api/v1/accommodation/me")
+def accommodation_me(user:User=Depends(require_roles("Student")),db:Session=Depends(get_db)):
+    rows=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.student_user_id==user.id).order_by(HostelAllocation.id.desc())).all()
+    hostel_ids={x.hostel_id for x in rows}; room_ids={x.room_id for x in rows}
+    hostels=db.scalars(select(Hostel).where(Hostel.tenant_id==user.tenant_id,Hostel.id.in_(hostel_ids))).all() if hostel_ids else []
+    rooms=db.scalars(select(HostelRoom).where(HostelRoom.tenant_id==user.tenant_id,HostelRoom.id.in_(room_ids))).all() if room_ids else []
+    hostel_map={x.id:x for x in hostels}; room_map={x.id:x for x in rooms}
+    return {"current":next(({"allocation_id":x.id,"hostel_name":hostel_map[x.hostel_id].name if x.hostel_id in hostel_map else "","hostel_type":hostel_map[x.hostel_id].hostel_type if x.hostel_id in hostel_map else "","warden_name":hostel_map[x.hostel_id].warden_name if x.hostel_id in hostel_map else "","warden_phone":hostel_map[x.hostel_id].warden_phone if x.hostel_id in hostel_map else "","room_number":room_map[x.room_id].room_number if x.room_id in room_map else "","floor":room_map[x.room_id].floor if x.room_id in room_map else "","room_type":room_map[x.room_id].room_type if x.room_id in room_map else "","bed_number":x.bed_number,"check_in_at":x.check_in_at,"status":x.status,"notes":x.notes} for x in rows if x.status=="ACTIVE" and x.check_out_at is None),None),"history":[{"allocation_id":x.id,"hostel_name":hostel_map[x.hostel_id].name if x.hostel_id in hostel_map else "","room_number":room_map[x.room_id].room_number if x.room_id in room_map else "","bed_number":x.bed_number,"check_in_at":x.check_in_at,"check_out_at":x.check_out_at,"status":x.status,"notes":x.notes} for x in rows]}
+
+@app.get("/api/v1/accommodation/children")
+def accommodation_children(user:User=Depends(require_roles("Parent / Guardian")),db:Session=Depends(get_db)):
+    links=db.scalars(select(ParentStudentLink).where(ParentStudentLink.tenant_id==user.tenant_id,ParentStudentLink.parent_user_id==user.id)).all()
+    student_ids={x.student_user_id for x in links}
+    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(student_ids),User.role=="Student")).all() if student_ids else []
+    student_map={x.id:x for x in students}
+    allocations=db.scalars(select(HostelAllocation).where(HostelAllocation.tenant_id==user.tenant_id,HostelAllocation.student_user_id.in_(student_ids)).order_by(HostelAllocation.id.desc())).all() if student_ids else []
+    hostel_ids={x.hostel_id for x in allocations}; room_ids={x.room_id for x in allocations}
+    hostels=db.scalars(select(Hostel).where(Hostel.tenant_id==user.tenant_id,Hostel.id.in_(hostel_ids))).all() if hostel_ids else []
+    rooms=db.scalars(select(HostelRoom).where(HostelRoom.tenant_id==user.tenant_id,HostelRoom.id.in_(room_ids))).all() if room_ids else []
+    hostel_map={x.id:x for x in hostels}; room_map={x.id:x for x in rooms}
+    return {"children":[{"student_user_id":sid,"student_name":student_map[sid].name if sid in student_map else f"Student #{sid}","relationship":next((l.relationship for l in links if l.student_user_id==sid),"Guardian"),"current":next(({"hostel_name":hostel_map[a.hostel_id].name if a.hostel_id in hostel_map else "","warden_name":hostel_map[a.hostel_id].warden_name if a.hostel_id in hostel_map else "","warden_phone":hostel_map[a.hostel_id].warden_phone if a.hostel_id in hostel_map else "","room_number":room_map[a.room_id].room_number if a.room_id in room_map else "","bed_number":a.bed_number,"check_in_at":a.check_in_at,"status":a.status} for a in allocations if a.student_user_id==sid and a.status=="ACTIVE" and a.check_out_at is None),None)} for sid in sorted(student_ids)]}
+
 @app.get("/api/v1/admin/hostels")
 def admin_hostels(user:User=Depends(require_roles("Institution Admin")),db:Session=Depends(get_db)):
     hostels=db.scalars(select(Hostel).where(Hostel.tenant_id==user.tenant_id).order_by(Hostel.name)).all()

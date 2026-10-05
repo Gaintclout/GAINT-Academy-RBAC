@@ -90,7 +90,7 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.production.yml run --rm --no-deps backend alembic stamp head
           docker compose --env-file .env.production -f docker-compose.production.yml up -d backend
           for attempt in {1..30}; do
-            if bash ops/smoke-test.sh http://127.0.0.1:8000; then
+            if docker compose --env-file .env.production -f docker-compose.production.yml exec -T backend python -c "import urllib.request; response=urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5); print(response.read().decode()); raise SystemExit(0 if response.status == 200 else 1)"; then
               exit 0
             fi
             sleep 2

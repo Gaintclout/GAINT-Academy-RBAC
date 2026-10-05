@@ -47,7 +47,7 @@ def test_teacher_student_learning_visibility(prefix):
     roster=get(teacher,"/api/v1/teacher-roster")
     profile=get(student,"/api/v1/student/profile")
     assert isinstance(roster,list)
-    assert profile
+    assert isinstance(profile,dict)
 
 @pytest.mark.parametrize("prefix",["","school.","college."])
 def test_accounts_auditor_finance_handoff(prefix):

@@ -24,7 +24,7 @@ def reset_db():
         ]);db.flush()
         db.add_all([Audit(tenant_id=1,actor="tenant-one",action="CREATE",resource="visible",details="VISIBLE-T1"),Audit(tenant_id=2,actor="tenant-two",action="CREATE",resource="secret",details="SECRET-T2")]);db.commit()
     yield
-    Base.metadata.drop_all(bind=engine)
+    # Leave the shared test schema intact for the legacy auth suite, which\n    # reuses the application engine later in the same pytest process.
 
 def auth(email):
     r=client.post("/api/v1/auth/login",json={"email":email,"password":PASSWORD});assert r.status_code==200

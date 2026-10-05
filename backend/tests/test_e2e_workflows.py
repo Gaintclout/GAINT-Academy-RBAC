@@ -46,7 +46,7 @@ def test_teacher_student_learning_visibility(prefix):
     student=f"{prefix}student@gaintacademy.com"
     roster=get(teacher,"/api/v1/teacher-roster")
     profile=get(student,"/api/v1/student/profile")
-    assert isinstance(roster,list)
+    assert isinstance(roster,dict)\n    assert isinstance(roster.get("classes"),list)\n    assert isinstance(roster.get("students"),list)
     assert isinstance(profile,dict)
 
 @pytest.mark.parametrize("prefix",["","school.","college."])

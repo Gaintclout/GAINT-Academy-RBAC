@@ -46,6 +46,20 @@ jobs:
           CORS_ORIGINS: https://academy.gaintclout.com
         run: python -c "from app.main import app; print(app.title)"
 
+      - name: Validate production Compose configuration
+        working-directory: .
+        env:
+          POSTGRES_DB: gaint_academy
+          POSTGRES_USER: gaint_academy
+          POSTGRES_PASSWORD: ci-only-database-password
+          SECRET_KEY: ci-production-secret-not-for-deployment
+          CORS_ORIGINS: https://academy.gaintclout.com
+        run: docker compose -f docker-compose.production.yml config --quiet
+
+      - name: Build production backend image
+        working-directory: .
+        run: docker compose -f docker-compose.production.yml build backend
+
       - name: Run backend tests
         env:
           PYTHONPATH: .

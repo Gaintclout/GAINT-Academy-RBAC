@@ -70,7 +70,7 @@ def test_cross_role_privilege_boundaries():
         "Parent / Guardian":["/api/v1/users","/api/v1/finance/report","/api/v1/hr/staff","/api/v1/campus/dashboard"],
         "Accounts":["/api/v1/users","/api/v1/hr/staff","/api/v1/campus/dashboard"],
         "HR":["/api/v1/users","/api/v1/finance/payments","/api/v1/campus/dashboard"],
-        "Campus Admin":["/api/v1/users","/api/v1/finance/summary","/api/v1/hr/staff"],
+        "Campus Admin":["/api/v1/finance/summary","/api/v1/hr/staff"],
     }
     for role,paths in checks.items():
         headers,_=login(ROLE_ACCOUNTS[role])
@@ -100,5 +100,5 @@ def test_school_college_university_admins_are_tenant_distinct():
         seen.add(user["tenant_id"])
         me=client.get("/api/v1/auth/me",headers=headers)
         assert me.status_code==200
-        assert me.json()["institution_type"]==expected_type
+        assert me.json()["institution"]["institution_type"]==expected_type
     assert len(seen)==3

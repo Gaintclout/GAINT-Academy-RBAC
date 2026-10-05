@@ -1,7 +1,8 @@
 import React,{useEffect,useState} from "react";
 import {api} from "../api";
 
-export default function ParentAcademics({title,ui}){\n const terms=ui.label==="School"?{learner:"Pupil",learners:"pupils",academics:"school academic",session:"Class Session",work:"Homework / Classwork"}:ui.label==="College"?{learner:"Student",learners:"students",academics:"college academic",session:"Class Session",work:"Assignment / Coursework"}:{learner:"Student",learners:"students",academics:"university academic",session:"Course Session",work:"Assignment / Coursework"};
+export default function ParentAcademics({title,ui}){
+ const terms=ui.label==="School"?{learner:"Pupil",learners:"pupils",academics:"school academic",session:"Class Session",work:"Homework / Classwork"}:ui.label==="College"?{learner:"Student",learners:"students",academics:"college academic",session:"Class Session",work:"Assignment / Coursework"}:{learner:"Student",learners:"students",academics:"university academic",session:"Course Session",work:"Assignment / Coursework"};
  const [children,setChildren]=useState([]),[childId,setChildId]=useState(""),[data,setData]=useState(null),[err,setErr]=useState("");
  useEffect(()=>{api.get("/api/v1/parents/children").then(r=>{setChildren(r.data);if(r.data.length)setChildId(String(r.data[0].id))}).catch(e=>setErr(e?.response?.data?.detail||"Unable to load linked "+terms.learners+"."))},[]);
  useEffect(()=>{if(!childId)return;api.get("/api/v1/parents/children/"+childId+"/academics").then(r=>{setData(r.data);setErr("")}).catch(e=>setErr(e?.response?.data?.detail||"Unable to load "+terms.learner.toLowerCase()+" academics."))},[childId]);

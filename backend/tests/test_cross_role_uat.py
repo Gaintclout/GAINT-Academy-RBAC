@@ -4,13 +4,21 @@ This suite verifies that every seeded role can authenticate, reaches its intende
 workspace, and is rejected from a representative privileged surface belonging to
 another role. Detailed domain behavior remains covered by the dedicated role tests.
 """
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.database import Base, engine
+from app.seed import seed
 
 client=TestClient(app)
 PASSWORD="Password@123"
 
-@pytest.fixture(scope="module", autouse=True)\ndef ensure_uat_baseline():\n    Base.metadata.create_all(bind=engine)\n    seed()\n\nROLE_ACCOUNTS={
+@pytest.fixture(scope="module", autouse=True)
+def ensure_uat_baseline():
+    Base.metadata.create_all(bind=engine)
+    seed()
+
+ROLE_ACCOUNTS={
     "Institution Admin":"admin@gaintacademy.com",
     "Teacher":"teacher@gaintacademy.com",
     "Student":"student@gaintacademy.com",

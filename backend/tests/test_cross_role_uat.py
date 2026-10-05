@@ -10,7 +10,7 @@ from app.main import app
 client=TestClient(app)
 PASSWORD="Password@123"
 
-ROLE_ACCOUNTS={
+@pytest.fixture(scope="module", autouse=True)\ndef ensure_uat_baseline():\n    Base.metadata.create_all(bind=engine)\n    seed()\n\nROLE_ACCOUNTS={
     "Institution Admin":"admin@gaintacademy.com",
     "Teacher":"teacher@gaintacademy.com",
     "Student":"student@gaintacademy.com",

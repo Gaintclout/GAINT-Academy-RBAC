@@ -16,7 +16,8 @@ PASSWORD="Password@123"
 @pytest.fixture(scope="module", autouse=True)
 def ensure_uat_baseline():
     Base.metadata.create_all(bind=engine)
-    seed()
+    with SessionLocal() as db:
+        seed(db)
 
 ROLE_ACCOUNTS={
     "Institution Admin":"admin@gaintacademy.com",

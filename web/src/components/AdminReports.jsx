@@ -2,8 +2,7 @@ import React,{useEffect,useMemo,useState} from "react";
 import {api} from "../api";
 
 const cell=v=>'"'+String(v??"").replaceAll('"','""')+'"';
-function saveCsv(name,rows){const header=["Report","Category","Records","Details"];const csv=[header,...rows.map(x=>[x.name,x.category,x.records,x.detail])].map(r=>r.map(cell).join(",")).join("
-");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
+function saveCsv(name,rows){const header=["Report","Category","Records","Details"];const csv=[header,...rows.map(x=>[x.name,x.category,x.records,x.detail])].map(r=>r.map(cell).join(",")).join("\\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
 export default function AdminReports({ui}){
  const terms=ui.label==="School"?{title:"School Reports",desc:"Cross-module reporting for school academics, administration, finance, operations and governance.",learner:"Pupils",units:"Classes / Grades",centre:"School Report Centre",file:"school"}:ui.label==="College"?{title:"College Reports",desc:"Cross-module reporting for college academics, administration, finance, operations and governance.",learner:"Students",units:"Departments / Programs",centre:"College Report Centre",file:"college"}:{title:"University Reports",desc:"Cross-module reporting for university academics, administration, finance, operations and governance.",learner:"Students",units:"Faculties / Programs",centre:"University Report Centre",file:"university"};
  const[data,setData]=useState(null),[error,setError]=useState(""),[query,setQuery]=useState("");

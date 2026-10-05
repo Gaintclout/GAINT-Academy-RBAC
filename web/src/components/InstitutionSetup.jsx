@@ -13,6 +13,7 @@ export default function InstitutionSetup({user,onUpdated}){
  const [form,setForm]=useState({name:current.name||"",code:current.code||"",institution_type:current.institution_type||"UNIVERSITY"});
  const [saving,setSaving]=useState(false),[message,setMessage]=useState(""),[error,setError]=useState("");
  const meta=STRUCTURE[form.institution_type]||STRUCTURE.UNIVERSITY;
+ const typeLabel=form.institution_type.replaceAll("_"," ");
  const set=(k,v)=>setForm(x=>({...x,[k]:v}));
  async function save(){
   try{
@@ -24,7 +25,7 @@ export default function InstitutionSetup({user,onUpdated}){
   finally{setSaving(false);}
  }
  return <div className="institution-setup">
-  <section className="role-hero"><div><span className="eyebrow">GAINT Academy Setup</span><h1>Institution Setup</h1><p>Configure the institution identity and operating model used across the platform.</p></div><div className="hero-badge">{form.institution_type.replaceAll("_"," ")}</div></section>
+  <section className="role-hero"><div><span className="eyebrow">GAINT Academy Setup</span><h1>{typeLabel} Setup</h1><p>Configure the {typeLabel.toLowerCase()} identity and operating model used across the platform.</p></div><div className="hero-badge">{form.institution_type.replaceAll("_"," ")}</div></section>
   <div className="setup-grid">
    <section className="panel">
     <div className="panel-title"><b>Institution Identity</b><span>Tenant #{user.tenant_id}</span></div>
@@ -38,8 +39,8 @@ export default function InstitutionSetup({user,onUpdated}){
    </section>
    <section className="panel setup-preview">
     <div className="panel-title"><b>Operating Model</b><span>Auto configured</span></div>
-    <div className="setup-summary"><div><small>Academic Structure</small><strong>{meta.academic}</strong></div><div><small>Primary Units</small><strong>{meta.unit}</strong></div><div><small>Typical Leadership</small><strong>{meta.leader}</strong></div><div><small>UI Experience</small><strong>{form.institution_type.replaceAll("_"," ")} terminology</strong></div></div>
-    <div className="readonly-note">Changing the institution type changes labels and experiences. Existing RBAC permissions remain enforced by the backend.</div>
+    <div className="setup-summary"><div><small>Academic Structure</small><strong>{meta.academic}</strong></div><div><small>Primary Units</small><strong>{meta.unit}</strong></div><div><small>Typical Leadership</small><strong>{meta.leader}</strong></div><div><small>UI Experience</small><strong>{typeLabel} terminology</strong></div></div>
+    <div className="readonly-note">Changing the institution type changes academic terminology, hierarchy labels and role experiences across GAINT Academy. Existing RBAC permissions remain enforced by the backend.</div>
    </section>
   </div>
  </div>

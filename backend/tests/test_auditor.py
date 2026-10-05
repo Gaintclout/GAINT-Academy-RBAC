@@ -2,6 +2,7 @@ import os
 os.environ["DATABASE_URL"]="sqlite:///./test_auditor.db"
 
 import pytest
+from pathlib import Path
 from fastapi.testclient import TestClient
 from app.main import app
 from app.database import Base, engine, SessionLocal

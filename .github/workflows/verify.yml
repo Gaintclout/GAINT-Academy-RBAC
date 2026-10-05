@@ -70,6 +70,31 @@ jobs:
           CORS_ORIGINS: https://academy.gaintclout.com
         run: docker compose --env-file .env.production -f docker-compose.production.yml build backend
 
+      - name: Start production stack and verify health
+        working-directory: .
+        env:
+          POSTGRES_DB: gaint_academy
+          POSTGRES_USER: gaint_academy
+          POSTGRES_PASSWORD: ci-only-database-password
+          SECRET_KEY: ci-production-secret-not-for-deployment-32chars
+          CORS_ORIGINS: https://academy.gaintclout.com
+        run: |
+          docker compose --env-file .env.production -f docker-compose.production.yml up -d
+          for attempt in {1..30}; do
+            if bash ops/smoke-test.sh http://127.0.0.1:8000; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --env-file .env.production -f docker-compose.production.yml ps
+          docker compose --env-file .env.production -f docker-compose.production.yml logs backend
+          exit 1
+
+      - name: Stop production stack
+        if: always()
+        working-directory: .
+        run: docker compose --env-file .env.production -f docker-compose.production.yml down -v || true
+
       - name: Remove CI production environment
         if: always()
         working-directory: .

@@ -1,7 +1,5 @@
-import os
-os.environ.setdefault("DATABASE_URL","sqlite:///./test.db")
-
-import pytest\nfrom sqlalchemy import select, delete
+import pytest
+from sqlalchemy import select
 from fastapi.testclient import TestClient
 from app.main import app
 from app.database import Base, engine, SessionLocal

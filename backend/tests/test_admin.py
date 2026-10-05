@@ -13,7 +13,7 @@ PASSWORD="Test@123"
 
 @pytest.fixture(autouse=True)
 def reset_db():
-    Base.metadata.drop_all(bind=engine); Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         db.add_all([
             Institution(id=1,name="Admin Test School",institution_type="SCHOOL",code="ADMIN-T1"),

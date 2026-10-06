@@ -67,6 +67,16 @@ export const INSTITUTION_UI = {
       ]
     }
   },
+  TRAINING_INSTITUTE: {
+    label: "Training Institute",
+    institutionName: "GAINT Demo Training Institute",
+    subtitle: "Cohorts & Batches • 2026-27",
+    search: "Search programs, batches, assignments...",
+    menuMap: {
+      Dashboard:"Dashboard","My Profile":"My Profile",Timetable:"Schedule",Attendance:"Attendance",Courses:"My Programs",Homework:"Coursework",Assignments:"Assignments",Exams:"Assessments",Results:"Results",Fees:"Fees",Transport:"Transport",Library:"Resources",Accommodation:"Accommodation",Events:"Events",Grievance:"Learner Support","Leave Request":"Leave Request","My Safety":"Safety",Staff:"Trainers & Staff",Admissions:"Admissions",Academics:"Programs & Batches","Exams & Results":"Assessments & Results",Communication:"Institute Communication","Learning / LMS":"Learning Resources","Fees & Payments":"Fees & Payments",Hostel:"Accommodation","Inventory & Assets":"Assets",Health:"Learner Wellness","Users & Roles":"Users & Roles","My Classes":"My Batches","My Students":"My Learners","Teacher Notes":"Trainer Notes",Leave:"Leave","My Children":"Learner Overview","Live Location":"Transport / Live Location",Messages:"Messages",Payments:"Payments",Receipts:"Receipts",Concessions:"Concessions",Refunds:"Refunds",Reconciliation:"Reconciliation","Finance Reports":"Finance Reports",Documents:"Staff Documents",Recruitment:"Recruitment",Performance:"Performance","HR Reports":"HR Reports","Campus Attendance":"Institute Attendance","Live Safety Map":"Safety Map",Visitors:"Visitors",Inventory:"Inventory",Assets:"Assets",Reports:"Reports","Audit Trail":"Audit Trail",Compliance:"Compliance","Exception Reports":"Exception Reports",Evidence:"Evidence","Export Reports":"Export Reports"
+    },
+    dashboard:{greeting:"Welcome back",subtitle:"Track your training, assessments and progress.",cards:[["Programs","Active","Current cohort"],["Attendance","—","Current batch"],["Assignments","—","Pending work"],["Progress","—","Program status"]]}
+  },
   UNIVERSITY: {
     label: "University",
     institutionName: "GAINT Demo University",

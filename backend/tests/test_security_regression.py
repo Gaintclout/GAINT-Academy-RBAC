@@ -100,3 +100,23 @@ def test_admin_cannot_mutate_foreign_tenant_user():
         json={"name": "Cross Tenant Mutation"},
     )
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("admin_email,foreign_admin_email", [
+    ("admin@gaintacademy.com", "school.admin@gaintacademy.com"),
+    ("admin@gaintacademy.com", "college.admin@gaintacademy.com"),
+    ("school.admin@gaintacademy.com", "admin@gaintacademy.com"),
+    ("college.admin@gaintacademy.com", "admin@gaintacademy.com"),
+])
+def test_admin_cannot_mutate_foreign_tenant_admin(admin_email, foreign_admin_email):
+    headers = login(admin_email)
+    foreign_headers = login(foreign_admin_email)
+    foreign_me = client.get("/api/v1/auth/me", headers=foreign_headers)
+    assert foreign_me.status_code == 200
+    foreign_id = foreign_me.json()["id"]
+    response = client.patch(
+        f"/api/v1/users/{foreign_id}",
+        headers=headers,
+        json={"name": "Blocked Cross Tenant Admin Mutation"},
+    )
+    assert response.status_code == 404

@@ -20,13 +20,17 @@ This package implements the master functional design as a production-oriented st
 - Swagger/OpenAPI
 - Backend tests
 
-## Demo Password
+## Local Development Demo Accounts
+
+Demo accounts are for local development only. Production must keep `SEED_DEMO_DATA=false`.
+
+### Demo Password
 
 All demo users use:
 
 `Password@123`
 
-## Demo Accounts
+### Demo Accounts
 
 | Role | Email |
 | --- | --- |

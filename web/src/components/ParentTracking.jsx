@@ -18,7 +18,10 @@ const mapContainerStyle = {
 };
 
 
-export default function ParentTracking() {
+export default function ParentTracking({ ui }) {
+  const terms = ui?.label === "School"
+    ? { title: "Pupil Live Tracking", description: "Monitor only pupils linked to your parent / guardian account.", list: "My Pupils", empty: "No linked pupils found.", updating: "Updating pupil location...", unavailable: "Location is currently unavailable for this pupil.", marker: "Pupil Location" }
+    : { title: "Student Live Tracking", description: "Monitor only students linked to your parent / guardian account.", list: "My Students", empty: "No linked students found.", updating: "Updating student location...", unavailable: "Location is currently unavailable for this student.", marker: terms.marker };
   const [children, setChildren] =
     useState([]);
 
@@ -187,7 +190,7 @@ export default function ParentTracking() {
       <div className="page-title">
         <div>
           <h1>
-            Child Live Tracking
+            {terms.title}
           </h1>
 
           <p>
@@ -232,7 +235,7 @@ export default function ParentTracking() {
 
           <div className="panel-title">
             <b>
-              My Children
+              {terms.list}
             </b>
           </div>
 
@@ -361,50 +364,6 @@ export default function ParentTracking() {
                     {
                       loc.tracking_context
                     }
-                  </strong>
-                </div>
-
-
-                <div>
-                  <small>
-                    Route
-                  </small>
-
-                  <strong>
-                    {
-                      loc.bus
-                        ?.route ||
-                      "—"
-                    }
-                  </strong>
-                </div>
-
-
-                <div>
-                  <small>
-                    Vehicle
-                  </small>
-
-                  <strong>
-                    {
-                      loc.bus
-                        ?.vehicle ||
-                      "—"
-                    }
-                  </strong>
-                </div>
-
-
-                <div>
-                  <small>
-                    ETA
-                  </small>
-
-                  <strong>
-                    {loc.bus
-                      ?.eta_minutes
-                      ? `${loc.bus.eta_minutes} min`
-                      : "—"}
                   </strong>
                 </div>
 

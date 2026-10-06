@@ -1,0 +1,6 @@
+import React,{useEffect,useState} from "react"; import {api} from "../api";
+export default function StudentResults({ui}){
+ const [data,setData]=useState({results:[],gpa:null}),[err,setErr]=useState("");
+ useEffect(()=>{api.get("/api/v1/my-results").then(r=>setData(r.data)).catch(e=>setErr(e?.response?.data?.detail||"Unable to load results."))},[]);
+ return <div><div className="page-title"><div><span className="eyebrow">{ui.label} Student</span><h1>Results & Academic Record</h1><p>Only officially published examination results appear here.</p></div></div>{err&&<div className="error">{err}</div>}<div className="module-kpis"><article><small>Published Results</small><strong>{data.results.length}</strong></article><article><small>GPA</small><strong>{data.gpa??"—"}</strong></article></div><section className="panel structure-table"><div className="table-scroll"><table><thead><tr><th>Course</th><th>Exam</th><th>Marks</th><th>%</th><th>Grade</th><th>Point</th><th>Result</th></tr></thead><tbody>{data.results.length?data.results.map((r,i)=><tr key={i}><td>{r.course}</td><td><b>{r.exam}</b></td><td>{r.marks}/{r.max_marks}</td><td>{r.percentage}%</td><td>{r.grade}</td><td>{r.grade_point??"—"}</td><td>{r.result_status}</td></tr>):<tr><td colSpan="7" className="empty-cell">No published results yet.</td></tr>}</tbody></table></div></section></div>
+}

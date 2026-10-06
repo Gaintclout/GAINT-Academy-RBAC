@@ -20,13 +20,17 @@ This package implements the master functional design as a production-oriented st
 - Swagger/OpenAPI
 - Backend tests
 
-## Demo Password
+## Local Development Demo Accounts
+
+Demo accounts are for local development only. Production must keep `SEED_DEMO_DATA=false`.
+
+### Demo Password
 
 All demo users use:
 
 `Password@123`
 
-## Demo Accounts
+### Demo Accounts
 
 | Role | Email |
 | --- | --- |
@@ -105,3 +109,11 @@ This build removes generic CRUD controls from read-only roles and enforces the s
 `/api/v1/module-access/{page}`
 
 and record mutation checks.
+
+## Production Release Checklist
+
+Before release, create the real server environment from `.env.production.example` and use unique production database and JWT secrets. Keep `APP_ENV=production`, `AUTO_CREATE_SCHEMA=false`, and `SEED_DEMO_DATA=false`. Configure only the required HTTPS origins in `CORS_ORIGINS`.
+
+Validate the production Compose configuration, apply Alembic migrations, verify `/health`, and confirm login/RBAC for all eight roles. Verify tenant isolation across separate institutions before opening production access. Back up PostgreSQL and test the restore procedure before applying production migrations.
+
+Merge or deploy only when the backend verification, frontend production build, mobile verification, and production Compose smoke check are green for the current pull-request head commit.

@@ -1,0 +1,6 @@
+import React,{useEffect,useState} from "react"; import {api} from "../api";
+export default function StudentExams({ui}){
+ const [rows,setRows]=useState([]),[err,setErr]=useState("");
+ useEffect(()=>{api.get("/api/v1/academic-work",{params:{work_type:"EXAM"}}).then(r=>{setRows(r.data);setErr("")}).catch(e=>setErr(e?.response?.data?.detail||"Unable to load exams."))},[]);
+ return <div><div className="page-title"><div><span className="eyebrow">{ui.label} Student</span><h1>Exams</h1><p>View examinations assigned to your enrolled courses and sections. Published marks are available separately under Results.</p></div></div>{err&&<div className="error">{err}</div>}<div className="work-grid">{rows.length?rows.map(x=><section className="panel" key={x.id}><div className="panel-title"><b>{x.title}</b><span>{x.status}</span></div><p>{x.description||"No description"}</p><div className="work-meta"><span>Maximum Marks: {x.max_marks}</span><span>Scheduled / Due: {x.due_at?new Date(x.due_at).toLocaleString():"—"}</span></div></section>):<section className="panel">No published exams.</section>}</div></div>
+}

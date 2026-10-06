@@ -1,0 +1,155 @@
+name: GAINT Academy Verification
+
+on:
+  push:
+    branches:
+      - feature/multi-institution-ui
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend verification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile backend
+        run: python -m compileall -q app
+      - name: Validate Alembic migrations
+        run: alembic upgrade head
+      - name: Import FastAPI application
+        run: python -c "from app.main import app; print(app.title)"
+      - name: Verify production startup guard
+        env:
+          APP_ENV: production
+          AUTO_CREATE_SCHEMA: "false"
+          SEED_DEMO_DATA: "false"
+          SECRET_KEY: ci-production-secret-not-for-deployment
+          DATABASE_URL: postgresql+psycopg2://ci:ci@localhost:5432/gaint_academy_ci
+          CORS_ORIGINS: https://academy.gaintclout.com
+        run: python -c "from app.main import app; print(app.title)"
+
+      - name: Prepare CI production environment
+        working-directory: .
+        run: cp .env.production.example .env.production
+
+      - name: Validate production Compose configuration
+        working-directory: .
+        env:
+          POSTGRES_DB: gaint_academy
+          POSTGRES_USER: gaint_academy
+          POSTGRES_PASSWORD: ci-only-database-password
+          SECRET_KEY: ci-production-secret-not-for-deployment-32chars
+          CORS_ORIGINS: https://academy.gaintclout.com
+        run: docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+
+      - name: Build production backend image
+        working-directory: .
+        env:
+          POSTGRES_DB: gaint_academy
+          POSTGRES_USER: gaint_academy
+          POSTGRES_PASSWORD: ci-only-database-password
+          SECRET_KEY: ci-production-secret-not-for-deployment-32chars
+          CORS_ORIGINS: https://academy.gaintclout.com
+        run: docker compose --env-file .env.production -f docker-compose.production.yml build backend
+
+      - name: Start production stack and verify health
+        working-directory: .
+        env:
+          POSTGRES_DB: gaint_academy
+          POSTGRES_USER: gaint_academy
+          POSTGRES_PASSWORD: ci-only-database-password
+          SECRET_KEY: ci-production-secret-not-for-deployment-32chars
+          CORS_ORIGINS: https://academy.gaintclout.com
+        run: |
+          docker compose --env-file .env.production -f docker-compose.production.yml up -d db
+          for attempt in {1..30}; do
+            if docker compose --env-file .env.production -f docker-compose.production.yml exec -T db pg_isready -U gaint_academy -d gaint_academy; then
+              break
+            fi
+            sleep 1
+          done
+          docker compose --env-file .env.production -f docker-compose.production.yml run --rm --no-deps backend python -c "from app.database import Base, engine; import app.models; Base.metadata.create_all(bind=engine)"
+          docker compose --env-file .env.production -f docker-compose.production.yml run --rm --no-deps backend alembic stamp head
+          docker compose --env-file .env.production -f docker-compose.production.yml up -d backend
+          for attempt in {1..30}; do
+            if docker compose --env-file .env.production -f docker-compose.production.yml exec -T backend python -c "import urllib.request; response=urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5); print(response.read().decode()); raise SystemExit(0 if response.status == 200 else 1)"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --env-file .env.production -f docker-compose.production.yml ps
+          docker compose --env-file .env.production -f docker-compose.production.yml logs backend
+          exit 1
+
+      - name: Stop production stack
+        if: always()
+        working-directory: .
+        run: docker compose --env-file .env.production -f docker-compose.production.yml down -v || true
+
+      - name: Remove CI production environment
+        if: always()
+        working-directory: .
+        run: rm -f .env.production
+
+      - name: Run backend tests
+        env:
+          PYTHONPATH: .
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+
+  mobile:
+    name: Mobile verification
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install
+      - name: Validate Expo configuration
+        run: npx expo config --type public
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check

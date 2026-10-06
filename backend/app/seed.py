@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from .models import User, ParentStudentLink, Record, StudentLocation
+from .models import User, Institution, ParentStudentLink, Record, StudentLocation
 from .security import hash_password
 
 DEMO_PASSWORD = "Password@123"
@@ -16,7 +16,43 @@ DEMO_USERS = [
     ("auditor@gaintacademy.com","System Auditor","Auditor"),
 ]
 
+DEMO_INSTITUTIONS = [
+    (1, "GAINT Demo University", "UNIVERSITY", "GAINT-UNI"),
+    (2, "GAINT Demo School", "SCHOOL", "GAINT-SCHOOL"),
+    (3, "GAINT Demo College", "COLLEGE", "GAINT-COLLEGE"),
+]
+
+ROLE_DEFINITIONS = [
+    ("admin", "Institution Admin", "Administrator"),
+    ("teacher", "Teacher", "Teacher"),
+    ("student", "Student", "Student"),
+    ("parent", "Parent / Guardian", "Parent"),
+    ("accounts", "Accounts", "Accounts Manager"),
+    ("hr", "HR", "HR Manager"),
+    ("campus", "Campus Admin", "Campus Administrator"),
+    ("auditor", "Auditor", "Auditor"),
+]
+
+ADAPTIVE_DEMO_TENANTS = [
+    ("school", 2, "School"),
+    ("college", 3, "College"),
+]
+
 def seed(db: Session):
+    for institution_id, name, institution_type, code in DEMO_INSTITUTIONS:
+        institution = db.get(Institution, institution_id)
+        if not institution:
+            db.add(Institution(
+                id=institution_id, name=name, institution_type=institution_type,
+                code=code, is_active=True
+            ))
+        else:
+            institution.name = name
+            institution.institution_type = institution_type
+            institution.code = code
+            institution.is_active = True
+    db.commit()
+
     for email,name,role in DEMO_USERS:
         user = db.scalar(select(User).where(User.email == email))
         if not user:
@@ -28,6 +64,43 @@ def seed(db: Session):
         else:
             user.name=name
             user.role=role
+    db.commit()
+
+    for prefix, tenant_id, institution_label in ADAPTIVE_DEMO_TENANTS:
+        for account, role, display_role in ROLE_DEFINITIONS:
+            email = f"{prefix}.{account}@gaintacademy.com"
+            name = f"GAINT {institution_label} {display_role}"
+            user = db.scalar(select(User).where(User.email == email))
+            if not user:
+                db.add(User(
+                    email=email, name=name, role=role,
+                    password_hash=hash_password(DEMO_PASSWORD),
+                    tenant_id=tenant_id, campus_id=1, is_active=True
+                ))
+            else:
+                user.name = name
+                user.role = role
+                user.tenant_id = tenant_id
+                user.campus_id = 1
+                user.is_active = True
+    db.commit()
+
+    for prefix, tenant_id, _ in ADAPTIVE_DEMO_TENANTS:
+        parent = db.scalar(select(User).where(User.email == f"{prefix}.parent@gaintacademy.com"))
+        student = db.scalar(select(User).where(User.email == f"{prefix}.student@gaintacademy.com"))
+        if parent and student:
+            link = db.scalar(select(ParentStudentLink).where(
+                ParentStudentLink.parent_user_id == parent.id,
+                ParentStudentLink.student_user_id == student.id,
+                ParentStudentLink.tenant_id == tenant_id,
+            ))
+            if not link:
+                db.add(ParentStudentLink(
+                    parent_user_id=parent.id,
+                    student_user_id=student.id,
+                    relationship="Parent",
+                    tenant_id=tenant_id,
+                ))
     db.commit()
 
     parent = db.scalar(select(User).where(User.email=="parent@gaintacademy.com"))

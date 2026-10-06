@@ -16,9 +16,12 @@ export default function InstitutionSetup({user,onUpdated}){
  const typeLabel=form.institution_type.replaceAll("_"," ");
  const set=(k,v)=>setForm(x=>({...x,[k]:v}));
  async function save(){
+  const payload={...form,name:form.name.trim(),code:form.code.trim().toUpperCase()};
+  if(payload.name.length<2){setMessage("");setError("Institution name must contain at least 2 characters.");return}
+  if(!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(payload.code)){setMessage("");setError("Institution code must be 2-32 characters using letters, numbers, hyphen or underscore.");return}
   try{
    setSaving(true);setError("");setMessage("");
-   const {data}=await api.put("/api/v1/institution",form);
+   const {data}=await api.put("/api/v1/institution",payload);
    setMessage("Institution configuration saved.");
    onUpdated?.(data);
   }catch(e){setError(e?.response?.data?.detail||"Unable to save institution settings.");}

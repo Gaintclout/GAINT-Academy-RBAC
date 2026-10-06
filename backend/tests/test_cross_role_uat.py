@@ -70,7 +70,8 @@ def test_cross_role_privilege_boundaries():
         "Parent / Guardian":["/api/v1/users","/api/v1/finance/report","/api/v1/hr/staff","/api/v1/campus/dashboard"],
         "Accounts":["/api/v1/users","/api/v1/hr/staff","/api/v1/campus/dashboard"],
         "HR":["/api/v1/users","/api/v1/finance/payments","/api/v1/campus/dashboard"],
-        "Campus Admin":["/api/v1/finance/summary","/api/v1/hr/staff"],
+        "Campus Admin":["/api/v1/finance/summary","/api/v1/hr/staff","/api/v1/auditor/dashboard"],
+        "Auditor":["/api/v1/users","/api/v1/campus/dashboard"],
     }
     for role,paths in checks.items():
         headers,_=login(ROLE_ACCOUNTS[role])
@@ -87,6 +88,20 @@ def test_auditor_read_access_does_not_grant_admin_mutation():
         "password":"Blocked@123","role":"Student","campus_id":1
     })
     assert r.status_code==403
+
+
+def test_all_non_admin_roles_cannot_create_users():
+    for role,email in ROLE_ACCOUNTS.items():
+        if role=="Institution Admin":
+            continue
+        headers,_=login(email)
+        r=client.post("/api/v1/users",headers=headers,json={
+            "name":"Blocked Privilege Escalation",
+            "email":f"blocked.{role.lower().replace(' ','.').replace('/','.')}@test.local",
+            "password":"Blocked@123","role":"Institution Admin","campus_id":1,
+        })
+        assert r.status_code==403,(role,r.status_code,r.text)
+
 
 def test_school_college_university_admins_are_tenant_distinct():
     accounts=[

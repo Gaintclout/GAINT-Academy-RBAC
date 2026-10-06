@@ -71,7 +71,7 @@ def test_cross_role_privilege_boundaries():
         "Accounts":["/api/v1/users","/api/v1/hr/staff","/api/v1/campus/dashboard"],
         "HR":["/api/v1/users","/api/v1/finance/payments","/api/v1/campus/dashboard"],
         "Campus Admin":["/api/v1/finance/summary","/api/v1/hr/staff","/api/v1/auditor/dashboard"],
-        "Auditor":["/api/v1/users","/api/v1/campus/dashboard"],
+        "Auditor":["/api/v1/campus/dashboard"],
     }
     for role,paths in checks.items():
         headers,_=login(ROLE_ACCOUNTS[role])

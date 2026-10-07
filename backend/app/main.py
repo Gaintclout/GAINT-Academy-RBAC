@@ -2046,12 +2046,23 @@ def finance_summary(user:User=Depends(require_roles("Accounts","Institution Admi
     return {"assigned":float(assigned),"collected":float(collected),"outstanding":float(outstanding),"ledger_count":len(active),"paid_count":sum(1 for x in active if x.amount_paid>=x.amount_due),"partial_count":sum(1 for x in active if 0<x.amount_paid<x.amount_due),"due_count":sum(1 for x in active if x.amount_paid<=0)}
 
 @app.post("/api/v1/fee-ledger/{ledger_id}/payments")
-def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(require_roles("Accounts","Institution Admin")),db:Session=Depends(get_db)):
+def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     row=db.get(FeeLedger,ledger_id)
     if not row or row.tenant_id!=user.tenant_id: raise HTTPException(404,"Fee ledger entry not found")
+    if user.role not in {"Accounts","Institution Admin","Student","Parent / Guardian"}:
+        raise HTTPException(403,"You cannot make or record payments for this fee")
+    if user.role=="Student" and row.student_user_id!=user.id:
+        raise HTTPException(403,"You cannot pay another student's fee")
+    if user.role=="Parent / Guardian":
+        _linked_child(db,user,row.student_user_id)
     if row.status=="CANCELLED": raise HTTPException(409,"Cancelled fees cannot receive payments")
     balance=max(0,row.amount_due-row.amount_paid)
     reference=payload.reference.strip()
+    if user.role in {"Student","Parent / Guardian"}:
+        if settings.APP_ENV=="production":
+            raise HTTPException(503,"Online payment gateway is not configured. Please use the approved payment provider.")
+        if not reference:
+            reference=f"UAT-{user.role.replace(' ','').replace('/','')}-{dt.datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
     if reference and db.scalar(select(FeePayment).where(FeePayment.tenant_id==user.tenant_id,FeePayment.reference==reference)): raise HTTPException(409,"This payment reference has already been recorded")
     payment_amount=Decimal(str(payload.amount)).quantize(Decimal("0.01"))
     if payment_amount<=0: raise HTTPException(400,"Payment amount must be greater than zero")
@@ -2060,7 +2071,7 @@ def record_fee_payment(ledger_id:int,payload:FeePaymentIn,user:User=Depends(requ
     receipt=f"GAINT-{user.tenant_id}-{dt.datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}-{ledger_id}"
     payment=FeePayment(tenant_id=user.tenant_id,ledger_id=row.id,student_user_id=row.student_user_id,amount=payment_amount,reference=reference,receipt_no=receipt,recorded_by=user.id)
     row.amount_paid+=payment_amount; row.status="PAID" if row.amount_paid>=row.amount_due else "PARTIAL"
-    db.add(payment); audit(db,user,"PAYMENT","fee_ledger",f"student={row.student_user_id};receipt={receipt};amount={payment_amount}"); db.commit()
+    db.add(payment); audit(db,user,"PAYMENT","fee_ledger",f"student={row.student_user_id};payer_role={user.role};payer={user.id};receipt={receipt};amount={payment_amount}"); db.commit()
     return {"ok":True,"receipt_no":receipt,"ledger":_fee_payload(row)}
 
 @app.get("/api/v1/fee-ledger/{ledger_id}/receipts")

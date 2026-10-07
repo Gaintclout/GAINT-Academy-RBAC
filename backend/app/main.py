@@ -810,17 +810,57 @@ def campus_attendance(user:User=Depends(require_roles("Campus Admin","Institutio
 
 @app.get("/api/v1/campus/transport")
 def campus_transport(user:User=Depends(require_roles("Campus Admin","Institution Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
     routes=db.scalars(select(TransportRoute).where(TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==user.campus_id).order_by(TransportRoute.name)).all()
     vehicles=db.scalars(select(TransportVehicle).where(TransportVehicle.tenant_id==user.tenant_id,TransportVehicle.campus_id==user.campus_id).order_by(TransportVehicle.vehicle_number)).all()
     allocations=db.scalars(select(StudentTransportAllocation).where(StudentTransportAllocation.tenant_id==user.tenant_id,StudentTransportAllocation.campus_id==user.campus_id)).all()
-    route_names={x.id:x.name for x in routes}; vehicle_names={x.id:x.vehicle_number for x in vehicles}
-    student_ids={x.student_user_id for x in allocations}
-    students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.id.in_(student_ids))).all() if student_ids else []
-    names={x.id:x.name for x in students}
-    campuses=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.unit_type=="CAMPUS",AcademicUnit.status=="Active").order_by(AcademicUnit.name)).all()
-    units=db.scalars(select(AcademicUnit).where(AcademicUnit.tenant_id==user.tenant_id,AcademicUnit.status=="Active").order_by(AcademicUnit.name)).all()
-    unit_map={x.id:x for x in units}
-    return {"campuses":[{"id":x.id,"name":x.name,"code":x.code} for x in campuses],"academic_units":[{"id":x.id,"name":x.name,"code":x.code,"unit_type":x.unit_type} for x in units],"summary":{"routes":len(routes),"active_routes":sum(1 for x in routes if x.status=="Active"),"vehicles":len(vehicles),"active_vehicles":sum(1 for x in vehicles if x.status=="Active"),"allocations":len(allocations)},"routes":[{"id":x.id,"name":x.name,"code":x.code,"status":x.status} for x in routes],"vehicles":[{"id":x.id,"vehicle_number":x.vehicle_number,"label":x.label,"status":x.status} for x in vehicles],"allocations":[{"id":x.id,"student_name":names.get(x.student_user_id,""),"route_name":route_names.get(x.route_id,""),"vehicle_number":vehicle_names.get(x.vehicle_id,"") if x.vehicle_id else "","pickup_time":x.pickup_time,"drop_time":x.drop_time,"status":x.status} for x in allocations]}
+    route_ids=[x.id for x in routes]
+    stops=db.scalars(select(TransportStop).where(TransportStop.tenant_id==user.tenant_id,TransportStop.route_id.in_(route_ids)).order_by(TransportStop.route_id,TransportStop.stop_order)).all() if route_ids else []
+    eligible_students=db.scalars(select(User).where(User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role=="Student",User.is_active==True).order_by(User.name)).all()
+    route_map={x.id:x for x in routes}; vehicle_map={x.id:x for x in vehicles}; stop_map={x.id:x for x in stops}; names={x.id:x.name for x in eligible_students}
+    return {"campus_id":user.campus_id,"summary":{"routes":len(routes),"active_routes":sum(x.status=="Active" for x in routes),"vehicles":len(vehicles),"active_vehicles":sum(x.status=="Active" for x in vehicles),"allocations":len(allocations),"active_allocations":sum(x.status=="Active" for x in allocations)},"routes":[{"id":x.id,"campus_id":x.campus_id,"name":x.name,"code":x.code,"status":x.status} for x in routes],"vehicles":[{"id":x.id,"campus_id":x.campus_id,"vehicle_number":x.vehicle_number,"label":x.label,"status":x.status} for x in vehicles],"stops":[{"id":x.id,"route_id":x.route_id,"name":x.name,"stop_order":x.stop_order} for x in stops],"students":[{"id":x.id,"name":x.name,"campus_id":x.campus_id} for x in eligible_students],"allocations":[{"id":x.id,"student_user_id":x.student_user_id,"student_name":names.get(x.student_user_id,f"Student #{x.student_user_id}"),"route_id":x.route_id,"route_name":route_map[x.route_id].name if x.route_id in route_map else "","vehicle_id":x.vehicle_id,"vehicle_number":vehicle_map[x.vehicle_id].vehicle_number if x.vehicle_id in vehicle_map else "","stop_id":x.stop_id,"stop_name":stop_map[x.stop_id].name if x.stop_id in stop_map else "","pickup_time":x.pickup_time,"drop_time":x.drop_time,"status":x.status} for x in allocations]}
+
+@app.post("/api/v1/campus/transport/routes")
+def campus_transport_route_create(payload:AdminTransportRouteIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None or payload.campus_id!=user.campus_id: raise HTTPException(403,"Route must belong to your assigned campus")
+    code=payload.code.strip()
+    if db.scalar(select(TransportRoute.id).where(TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==user.campus_id,TransportRoute.code==code)): raise HTTPException(409,"Route code already exists for this campus")
+    row=TransportRoute(tenant_id=user.tenant_id,campus_id=user.campus_id,name=payload.name.strip(),code=code)
+    db.add(row); audit(db,user,"CREATE","Transport Route",f"{code}:{row.name}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.post("/api/v1/campus/transport/vehicles")
+def campus_transport_vehicle_create(payload:AdminTransportVehicleIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None or payload.campus_id!=user.campus_id: raise HTTPException(403,"Vehicle must belong to your assigned campus")
+    number=payload.vehicle_number.strip()
+    if db.scalar(select(TransportVehicle.id).where(TransportVehicle.tenant_id==user.tenant_id,TransportVehicle.vehicle_number==number)): raise HTTPException(409,"Vehicle number already exists")
+    row=TransportVehicle(tenant_id=user.tenant_id,campus_id=user.campus_id,vehicle_number=number,label=payload.label.strip())
+    db.add(row); audit(db,user,"CREATE","Transport Vehicle",number); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
+
+@app.post("/api/v1/campus/transport/stops")
+def campus_transport_stop_create(payload:AdminTransportStopIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    route=db.scalar(select(TransportRoute).where(TransportRoute.id==payload.route_id,TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==user.campus_id))
+    if not route: raise HTTPException(404,"Transport route not found in your campus")
+    if db.scalar(select(TransportStop.id).where(TransportStop.tenant_id==user.tenant_id,TransportStop.route_id==route.id,TransportStop.name==payload.name.strip())): raise HTTPException(409,"Stop already exists on this route")
+    row=TransportStop(tenant_id=user.tenant_id,route_id=route.id,name=payload.name.strip(),stop_order=payload.stop_order)
+    db.add(row); audit(db,user,"CREATE","Transport Stop",f"route={route.id};{row.name}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"name":row.name}
+
+@app.post("/api/v1/campus/transport/allocations")
+def campus_transport_allocation_create(payload:AdminTransportAllocationIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    student=db.scalar(select(User).where(User.id==payload.student_user_id,User.tenant_id==user.tenant_id,User.campus_id==user.campus_id,User.role=="Student",User.is_active==True))
+    route=db.scalar(select(TransportRoute).where(TransportRoute.id==payload.route_id,TransportRoute.tenant_id==user.tenant_id,TransportRoute.campus_id==user.campus_id,TransportRoute.status=="Active"))
+    stop=db.scalar(select(TransportStop).where(TransportStop.id==payload.stop_id,TransportStop.tenant_id==user.tenant_id,TransportStop.route_id==payload.route_id))
+    vehicle=db.scalar(select(TransportVehicle).where(TransportVehicle.id==payload.vehicle_id,TransportVehicle.tenant_id==user.tenant_id,TransportVehicle.campus_id==user.campus_id,TransportVehicle.status=="Active")) if payload.vehicle_id else None
+    if not student or not route or not stop: raise HTTPException(400,"Student, route or stop is invalid for your campus")
+    if payload.vehicle_id and not vehicle: raise HTTPException(400,"Invalid active vehicle for your campus")
+    if db.scalar(select(StudentTransportAllocation).where(StudentTransportAllocation.tenant_id==user.tenant_id,StudentTransportAllocation.student_user_id==student.id)): raise HTTPException(409,"Student already has a transport allocation")
+    status=payload.status.strip().title()
+    if status not in {"Active","Inactive"}: raise HTTPException(400,"Invalid allocation status")
+    row=StudentTransportAllocation(tenant_id=user.tenant_id,campus_id=user.campus_id,student_user_id=student.id,route_id=route.id,vehicle_id=vehicle.id if vehicle else None,stop_id=stop.id,pickup_time=payload.pickup_time.strip(),drop_time=payload.drop_time.strip(),status=status)
+    db.add(row); audit(db,user,"CREATE","Transport Allocation",f"student={student.id};route={route.id}"); db.commit(); db.refresh(row)
+    return {"id":row.id,"status":row.status}
 
 @app.get("/api/v1/campus/visitors")
 def campus_visitors(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):

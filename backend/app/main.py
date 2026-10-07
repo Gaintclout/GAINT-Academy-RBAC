@@ -2126,7 +2126,9 @@ def parent_child_transport(student_id:int,user:User=Depends(require_roles("Paren
     return {"student":{"id":student.id,"name":student.name},"allocated":True,
             "route":{"id":route.id,"name":route.name,"code":route.code} if route and route.tenant_id==user.tenant_id else None,
             "vehicle":{"id":vehicle.id,"vehicle_number":vehicle.vehicle_number,"label":vehicle.label} if vehicle and vehicle.tenant_id==user.tenant_id else None,
-            "stop":{"id":stop.id,"name":stop.name,"pickup_time":stop.pickup_time,"drop_time":stop.drop_time} if stop and stop.tenant_id==user.tenant_id else None,
+            "stop":{"id":stop.id,"name":stop.name,"stop_order":stop.stop_order} if stop and stop.tenant_id==user.tenant_id else None,
+            "pickup_time":allocation.pickup_time,
+            "drop_time":allocation.drop_time,
             "status":allocation.status}
 
 @app.get("/api/v1/parents/children/{student_id}/fees")

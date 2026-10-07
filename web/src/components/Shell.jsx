@@ -268,7 +268,7 @@ export default function Shell({ user, onLogout, onUserChange }) {
   } else if (user.role === "Parent / Guardian" && active === "Transport") {
     content = <ParentTransport ui={ui} />;
   } else if (user.role === "Parent / Guardian" && active === "Live Location") {
-    content = <ParentTracking />;
+    content = <ParentTracking ui={ui} />;
   } else if (user.role === "Campus Admin" && active === "Live Safety Map") {
     content = <LiveSafetyMap />;
   } else if (user.role === "Student" && active === "Leave Request") {

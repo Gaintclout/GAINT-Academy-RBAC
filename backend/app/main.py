@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, SessionLocal, get_db
 from .models import User, Institution, AcademicUnit, AcademicAssignment, EnrollmentHistory, AcademicWork, StudentAcademicWork, ClassSession, AttendanceEntry, GradeRule, ExamResult, FeeLedger, FeePayment, FeeConcession, FeeRefund, FinanceReconciliation, Record, ParentStudentLink, StudentLocation, SosEvent, Audit, TransportRoute, TransportVehicle, TransportStop, StudentTransportAllocation, LibraryBook, LibraryLoan, AcademyEvent, EventRegistration, Grievance, TeacherNote, CommunicationMessage, TeacherLeaveRequest, StudentLeaveRequest, StaffAttendance, StaffDocument, RecruitmentCandidate, StaffPerformanceReview, CampusVisitor, CampusInventoryItem, CampusAsset, Hostel, HostelRoom, HostelAllocation, HealthRecord, HealthVisit
-from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, AcademicWorkUpdateIn, SubmissionIn, GradeIn, ClassSessionIn, ClassSessionUpdateIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeeLedgerUpdateIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherNoteUpdateIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
+from .schemas import LoginRequest, RecordIn, LocationUpdate, SosIn, CampusTransportLocationIn, AIChatRequest, InstitutionIn, AcademicUnitIn, AcademicAssignmentIn, AcademicActivityIn, AcademicWorkIn, AcademicWorkUpdateIn, SubmissionIn, GradeIn, ClassSessionIn, ClassSessionUpdateIn, AttendanceMarkIn, GradeRuleIn, ExamResultIn, FeeLedgerIn, FeeLedgerUpdateIn, FeePaymentIn, FeeConcessionIn, FeeRefundIn, FinanceReconciliationIn, UserAdminUpdate, UserAdminCreate, ParentStudentLinkIn, StudentEnrollmentIn, StudentEnrollmentUpdate, StudentAdminUpdate, StudentAcademicManagementIn, StudentGuardianManagementIn, GrievanceIn, TeacherNoteIn, TeacherNoteUpdateIn, TeacherMessageIn, TeacherLeaveIn, ParentStudentLeaveIn, StaffAttendanceIn, HRLeaveReviewIn, StaffDocumentIn, RecruitmentCandidateIn, RecruitmentStageIn, StaffPerformanceReviewIn, CampusVisitorIn, CampusVisitorStatusIn, CampusInventoryIn, CampusInventoryUpdate, CampusAssetIn, CampusAssetUpdate, CampusEventIn, CampusGrievanceUpdateIn, HostelIn, HostelRoomIn, HostelUpdateIn, HostelRoomUpdateIn, HostelAllocationIn, HostelCheckoutIn, HealthRecordIn, HealthVisitIn, AdminLibraryBookIn, AdminLibraryBookUpdate, AdminLibraryLoanIn, AdminLibraryReturnIn, AdminTransportRouteIn, AdminTransportVehicleIn, AdminTransportStopIn, AdminTransportAllocationIn, AdminTransportStatusUpdate, AdminTransportRouteUpdate, AdminTransportVehicleUpdate, AdminClassSessionIn, AdminClassSessionUpdate, AdminInventoryIn, AdminAssetIn, AdminAcademicWorkIn, AdminAcademicWorkUpdate, AdminEventUpdateIn
 from .security import verify_password, hash_password, create_token, current_user, require_roles
 from .rbac import ROLE_MENUS, dashboard_for, module_access_for, can
 from .seed import seed, DEMO_PASSWORD, DEMO_USERS
@@ -2272,6 +2272,44 @@ def parent_child_location(
         "source":row.source,"tracking_context":row.tracking_context,"status":row.status,
         "recorded_at":row.recorded_at,
     }
+
+@app.post("/api/v1/campus/transport/location")
+def campus_transport_location(payload:CampusTransportLocationIn,user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):
+    if user.campus_id is None: raise HTTPException(400,"A campus assignment is required for campus operations")
+    vehicle=db.scalar(select(TransportVehicle).where(
+        TransportVehicle.id==payload.vehicle_id,
+        TransportVehicle.tenant_id==user.tenant_id,
+        TransportVehicle.campus_id==user.campus_id,
+        TransportVehicle.status=="Active",
+    ))
+    if not vehicle: raise HTTPException(404,"Active transport vehicle not found for your campus")
+    allocations=db.scalars(select(StudentTransportAllocation).where(
+        StudentTransportAllocation.tenant_id==user.tenant_id,
+        StudentTransportAllocation.campus_id==user.campus_id,
+        StudentTransportAllocation.vehicle_id==vehicle.id,
+        StudentTransportAllocation.status=="Active",
+    )).all()
+    if not allocations: raise HTTPException(409,"No active students are allocated to this vehicle")
+    recorded=0
+    for allocation in allocations:
+        student=db.scalar(select(User).where(
+            User.id==allocation.student_user_id,
+            User.tenant_id==user.tenant_id,
+            User.campus_id==user.campus_id,
+            User.role=="Student",
+            User.is_active==True,
+        ))
+        if not student: continue
+        db.add(StudentLocation(
+            student_user_id=student.id,tenant_id=user.tenant_id,campus_id=user.campus_id,
+            latitude=payload.latitude,longitude=payload.longitude,accuracy=payload.accuracy,
+            source="BUS_GPS",tracking_context="TRANSPORT",status="ACTIVE",
+        ))
+        recorded+=1
+    if recorded==0: raise HTTPException(409,"No active allocated students are available for location sharing")
+    audit(db,user,"TRANSPORT_LOCATION_UPDATE",f"vehicle:{vehicle.id}",f"students={recorded}")
+    db.commit()
+    return {"vehicle_id":vehicle.id,"vehicle_number":vehicle.vehicle_number,"updated_students":recorded,"status":"ACTIVE"}
 
 @app.get("/api/v1/campus/live-locations")
 def campus_live_locations(user:User=Depends(require_roles("Campus Admin")),db:Session=Depends(get_db)):

@@ -21,7 +21,7 @@ const mapContainerStyle = {
 export default function ParentTracking({ ui }) {
   const terms = ui?.label === "School"
     ? { title: "Pupil Live Tracking", description: "Monitor only pupils linked to your parent / guardian account.", list: "My Pupils", empty: "No linked pupils found.", updating: "Updating pupil location...", unavailable: "Location is currently unavailable for this pupil.", marker: "Pupil Location" }
-    : { title: "Student Live Tracking", description: "Monitor only students linked to your parent / guardian account.", list: "My Students", empty: "No linked students found.", updating: "Updating student location...", unavailable: "Location is currently unavailable for this student.", marker: terms.marker };
+    : { title: "Student Live Tracking", description: "Monitor only students linked to your parent / guardian account.", list: "My Students", empty: "No linked students found.", updating: "Updating student location...", unavailable: "Location is currently unavailable for this student.", marker: "Student Location" };
   const [children, setChildren] =
     useState([]);
 

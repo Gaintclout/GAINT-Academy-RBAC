@@ -26,6 +26,12 @@ class SosIn(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     message: str = ""
 
+class CampusTransportLocationIn(BaseModel):
+    vehicle_id: int = Field(ge=1)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy: float = Field(default=0, ge=0)
+
 class AIChatRequest(BaseModel):
     message: str
 
